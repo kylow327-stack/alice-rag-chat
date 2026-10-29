@@ -84,6 +84,8 @@ export default function ArchitecturePage() {
               <code className="text-navy">X-Title: {OPENROUTER_TITLE}</code>. The referer is a
               placeholder until this demo has a public URL. Temperature is 0.2. The reply is
               the OpenAI-style <code className="text-navy">choices[0].message.content</code>.
+              A separate reasoning trace is ignored. If the text itself opens with a
+              thinking-process preamble, only the final answer is shown.
             </span>
             <span className="mt-2 block">
               One request tries {OPENROUTER_MODEL}, then{" "}

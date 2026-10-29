@@ -4,6 +4,7 @@ import { chunkBook, extractBook } from "./chunk";
 import { floatToHalf, halfToFloat } from "./float16";
 import { tokenizeText, embedText } from "./embeddings";
 import { isModelRefusal, retrievalQuery } from "./prompt";
+import { answerFromPayload, extractFinalAnswer } from "./extract-answer";
 import { assess, loadCorpus, search } from "./retrieve";
 import {
   OPENROUTER_FALLBACK_MODELS,
@@ -128,6 +129,72 @@ describe("OpenRouter config", () => {
     assert.throws(() => assertFreeChatModels(["nvidia/nemotron-3.5-lightning"]), OpenRouterError);
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previous;
+  });
+});
+
+describe("final answer extraction", () => {
+  it("drops a thinking-process preamble and keeps the closing answer", () => {
+    const raw = [
+      "Here's a thinking process:",
+      "",
+      "1. Analyze User Input: The question is why Alice follows the rabbit.",
+      "2. Check the passages: Passage 1 mentions curiosity.",
+      "",
+      "Final answer:",
+      "Alice follows the White Rabbit because she is burning with curiosity.",
+    ].join("\n");
+    assert.equal(
+      extractFinalAnswer(raw),
+      "Alice follows the White Rabbit because she is burning with curiosity.",
+    );
+  });
+
+  it("keeps the prose that follows numbered analysis when there is no answer label", () => {
+    const raw = [
+      "Here's a thinking process:",
+      "",
+      "1. Analyze User Input: why she follows him.",
+      "2. Check the passages: curiosity on the bank.",
+      "",
+      "Alice follows the White Rabbit because she is burning with curiosity.",
+    ].join("\n");
+    assert.equal(
+      extractFinalAnswer(raw),
+      "Alice follows the White Rabbit because she is burning with curiosity.",
+    );
+  });
+
+  it("leaves a normal answer unchanged and ignores a separate reasoning field", () => {
+    assert.equal(
+      extractFinalAnswer("NOT_IN_BOOK"),
+      "NOT_IN_BOOK",
+    );
+    const payload = {
+      choices: [
+        {
+          message: {
+            content: "The gardeners painted the white roses red.",
+            reasoning: "Here's a thinking process:\n1. Analyze User Input: roses.",
+            reasoning_details: [{ text: "scratch" }],
+          },
+        },
+      ],
+    };
+    assert.equal(answerFromPayload(payload), "The gardeners painted the white roses red.");
+  });
+
+  it("does not show reasoning when content is only scratchwork", () => {
+    const payload = {
+      choices: [
+        {
+          message: {
+            content: "Here's a thinking process:\n1. Analyze User Input: nothing useful yet.",
+            reasoning: "The Queen of Hearts painted them.",
+          },
+        },
+      ],
+    };
+    assert.equal(answerFromPayload(payload), "");
   });
 });
 

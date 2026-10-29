@@ -7,7 +7,10 @@ import {
   OPENROUTER_RETRY_MODEL,
   OPENROUTER_TITLE,
 } from "./constants";
+import { answerFromPayload } from "./extract-answer";
 import type { ModelMessage } from "./types";
+
+const OPENROUTER_TIMEOUT_MS = 90_000;
 
 const RATE_LIMIT_MESSAGE =
   "The free shared model pool is busy right now. Wait a moment and try again; a retry usually gets through.";
@@ -55,32 +58,8 @@ const RETRY_ROUTE: FreeRoute = {
   models: OPENROUTER_RETRY_FALLBACKS,
 };
 
-function messageText(content: unknown): string {
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => {
-      if (typeof part === "string") return part;
-      if (part && typeof part === "object" && "text" in part) {
-        const text = (part as { text?: unknown }).text;
-        return typeof text === "string" ? text : "";
-      }
-      return "";
-    })
-    .join("")
-    .trim();
-}
-
-function usableText(payload: unknown): string {
-  if (!payload || typeof payload !== "object") return "";
-  const choice = (payload as { choices?: { text?: unknown; message?: { content?: unknown; reasoning?: unknown } }[] })
-    .choices?.[0];
-  const content = messageText(choice?.message?.content);
-  if (content) return content;
-  const reasoning = choice?.message?.reasoning;
-  if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
-  if (typeof choice?.text === "string" && choice.text.trim()) return choice.text.trim();
-  return "";
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 }
 
 function providerError(status: number, model: string): OpenRouterError {
@@ -96,6 +75,9 @@ function providerError(status: number, model: string): OpenRouterError {
   if (status === 429) {
     return new OpenRouterError(502, RATE_LIMIT_MESSAGE);
   }
+  if (status === 408) {
+    return new OpenRouterError(502, "The free model took too long to answer. Try again in a moment.");
+  }
   return new OpenRouterError(502, "OpenRouter returned an error. Try again shortly.");
 }
 
@@ -107,23 +89,29 @@ async function requestRoute(
   const ids = [route.model, ...route.models];
   assertFreeChatModels(ids);
 
-  const response = await fetch(OPENROUTER_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": OPENROUTER_REFERER,
-      "X-Title": OPENROUTER_TITLE,
-    },
-    body: JSON.stringify({
-      model: route.model,
-      models: route.models,
-      messages,
-      temperature: 0.2,
-      max_tokens: 700,
-    }),
-    signal: AbortSignal.timeout(45_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(OPENROUTER_CHAT_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": OPENROUTER_REFERER,
+        "X-Title": OPENROUTER_TITLE,
+      },
+      body: JSON.stringify({
+        model: route.model,
+        models: route.models,
+        messages,
+        temperature: 0.2,
+        max_tokens: 700,
+      }),
+      signal: AbortSignal.timeout(OPENROUTER_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (isTimeout(error)) return { status: 408, text: "" };
+    throw error;
+  }
 
   const raw = await response.text();
   if (!response.ok) {
@@ -137,7 +125,7 @@ async function requestRoute(
   } catch {
     throw new OpenRouterError(502, "OpenRouter returned an unreadable response.");
   }
-  return { status: response.status, text: usableText(payload) };
+  return { status: response.status, text: answerFromPayload(payload) };
 }
 
 export async function completeChat(messages: ModelMessage[]): Promise<string> {
@@ -150,12 +138,12 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY?.trim() ?? "";
   const first = await requestRoute(key, messages, PRIMARY_ROUTE);
   if (first.text) return first.text;
-  const retryable = first.status === 429 || first.status < 400;
+  const retryable = first.status === 429 || first.status === 408 || first.status < 400;
   if (!retryable) throw providerError(first.status, PRIMARY_ROUTE.model);
 
   const second = await requestRoute(key, messages, RETRY_ROUTE);
   if (second.text) return second.text;
-  if (second.status === 429 || second.status < 400) {
+  if (second.status === 429 || second.status === 408 || second.status < 400) {
     throw new OpenRouterError(502, RATE_LIMIT_MESSAGE);
   }
   throw providerError(second.status, RETRY_ROUTE.model);

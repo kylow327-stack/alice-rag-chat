@@ -9,6 +9,8 @@ import {
 import { assess, toCitation } from "@/lib/retrieve";
 import type { ChatMessage, ChatSuccess, Hit } from "@/lib/types";
 
+export const maxDuration = 180;
+
 function json(body: unknown, status: number) {
   return Response.json(body, { status });
 }
