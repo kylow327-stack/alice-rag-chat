@@ -5,8 +5,13 @@ import { floatToHalf, halfToFloat } from "./float16";
 import { tokenizeText, embedText } from "./embeddings";
 import { isModelRefusal, retrievalQuery } from "./prompt";
 import { assess, loadCorpus, search } from "./retrieve";
-import { OPENROUTER_MODEL } from "./constants";
-import { openRouterConfigError } from "./openrouter";
+import {
+  OPENROUTER_FALLBACK_MODELS,
+  OPENROUTER_MODEL,
+  OPENROUTER_RETRY_FALLBACKS,
+  OPENROUTER_RETRY_MODEL,
+} from "./constants";
+import { assertFreeChatModels, OpenRouterError, openRouterConfigError } from "./openrouter";
 
 const SAMPLE = `header
 *** START OF THE PROJECT GUTENBERG EBOOK ALICE ***
@@ -105,8 +110,22 @@ describe("OpenRouter config", () => {
     assert.equal(openRouterConfigError(), "OPENROUTER_API_KEY is not configured.");
     process.env.OPENROUTER_API_KEY = "sk-or-v1-example";
     assert.equal(openRouterConfigError(), null);
-    assert.match(OPENROUTER_MODEL, /:free$/);
-    assert.equal(OPENROUTER_MODEL.includes("gpt-4o"), false);
+    const routes = [
+      [OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS],
+      [OPENROUTER_RETRY_MODEL, ...OPENROUTER_RETRY_FALLBACKS],
+    ];
+    assert.ok(OPENROUTER_FALLBACK_MODELS.length <= 2);
+    assert.ok(OPENROUTER_RETRY_FALLBACKS.length <= 2);
+    for (const ids of routes) {
+      assert.ok(ids.length <= 3);
+      assert.doesNotThrow(() => assertFreeChatModels(ids));
+      for (const id of ids) {
+        assert.match(id, /:free$/);
+        assert.equal(id.includes("gpt-4o"), false);
+      }
+    }
+    assert.throws(() => assertFreeChatModels(["openai/gpt-4o"]), OpenRouterError);
+    assert.throws(() => assertFreeChatModels(["nvidia/nemotron-3.5-lightning"]), OpenRouterError);
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previous;
   });

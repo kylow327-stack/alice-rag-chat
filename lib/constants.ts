@@ -1,9 +1,24 @@
 /**
- * Free chat model on OpenRouter.
- * Gemma 4 31B Instruct (`google/gemma-4-31b-it:free`) was rate-limited upstream (429).
+ * Primary free chat model. Laguna S 2.1 and Gemma 4 31B free routes were
+ * hitting the upstream shared pool (429). Nemotron Lightning still answered
+ * at max_tokens 700.
  * https://openrouter.ai/models?q=free
  */
-export const OPENROUTER_MODEL = "poolside/laguna-s-2.1:free";
+export const OPENROUTER_MODEL = "nvidia/nemotron-3.5-lightning:free";
+
+/** At most two extra `:free` ids. OpenRouter allows three models in one call, including the primary. */
+export const OPENROUTER_FALLBACK_MODELS = [
+  "liquid/lfm-2.5-2.6b:free",
+  "recursive/flint-v1.0:free",
+] as const;
+
+/** Second free-only trio, used once if the first call is rate-limited or empty. */
+export const OPENROUTER_RETRY_MODEL = "dots-studio/dots-3-note-preview:free";
+
+export const OPENROUTER_RETRY_FALLBACKS = [
+  "cohere/north-mini-code:free",
+  "google/gemma-4-31b-it:free",
+] as const;
 
 export const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 

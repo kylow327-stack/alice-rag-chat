@@ -6,6 +6,7 @@ import {
   GUTENBERG_ID,
   LEXICAL_WEIGHT,
   OPENROUTER_CHAT_URL,
+  OPENROUTER_FALLBACK_MODELS,
   OPENROUTER_MODEL,
   OPENROUTER_REFERER,
   OPENROUTER_TITLE,
@@ -44,7 +45,7 @@ const STEPS = [
   },
   {
     title: "Generate",
-    body: `Otherwise the passages and the question go to ${OPENROUTER_MODEL} on OpenRouter’s free tier. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
+    body: `Otherwise the passages and the question go to OpenRouter’s free tier, starting at ${OPENROUTER_MODEL} and failing over to other :free models if that route is busy. No paid model is called. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
   },
 ];
 
@@ -85,11 +86,13 @@ export default function ArchitecturePage() {
               the OpenAI-style <code className="text-navy">choices[0].message.content</code>.
             </span>
             <span className="mt-2 block">
-              Chat uses Poolside Laguna S 2.1 on the OpenRouter free route,{" "}
-              <code className="text-navy">poolside/laguna-s-2.1:free</code>. The previous free
-              id, Gemma 4 31B Instruct, was returning 429 from upstream. The client still
-              refuses any model id that does not end in <code className="text-navy">:free</code>.
-              If this id disappears, replace it with another free chat model from the catalog.
+              One request tries {OPENROUTER_MODEL}, then{" "}
+              {OPENROUTER_FALLBACK_MODELS.join(" and ")}. If that free trio is rate-limited or
+              returns nothing, the server tries one more free-only trio. Shared-pool 429s are
+              common on these routes; a second try usually gets through. The client refuses
+              any model id that does not end in <code className="text-navy">:free</code>. There
+              is no paid fallback. The only server secret is{" "}
+              <code className="text-navy">OPENROUTER_API_KEY</code>.
             </span>
           </dd>
         </div>

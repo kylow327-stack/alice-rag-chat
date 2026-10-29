@@ -8,7 +8,7 @@ There is no upload and no sign-in. Chat is a separate Next.js app, meant to be d
 
 - Next.js App Router, TypeScript, Tailwind
 - Retrieval: a committed local index (no embedding API)
-- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free tier (`poolside/laguna-s-2.1:free`)
+- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free models, starting at `nvidia/nemotron-3.5-lightning:free` with automatic `:free` fallbacks
 
 ## Setup
 
@@ -80,12 +80,14 @@ Ranking is cosine similarity plus a lexical overlap bonus, so a name like “Tea
 ## Chat model
 
 ```
-poolside/laguna-s-2.1:free
+nvidia/nemotron-3.5-lightning:free
 ```
+
+Fallbacks on the same request: `liquid/lfm-2.5-2.6b:free`, `recursive/flint-v1.0:free`. If that trio is rate-limited or empty, one more free-only request tries `dots-studio/dots-3-note-preview:free`, then `cohere/north-mini-code:free` and `google/gemma-4-31b-it:free`.
 
 `POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. Optional headers sent on every call: `HTTP-Referer: https://alice-rag.example` (a placeholder until the demo has a public URL) and `X-Title: Alice RAG Chat`.
 
-This is Poolside Laguna S 2.1 on OpenRouter’s free route. `google/gemma-4-31b-it:free` was returning 429 from upstream, so chat no longer uses it. The client still rejects any model id that does not end in `:free`. If OpenRouter retires Laguna S 2.1 free, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
+Every id ends in `:free`. The client rejects anything else, so a paid model is never a fallback. The only environment variable is `OPENROUTER_API_KEY`. Free routes share an upstream pool and often return 429; the fallbacks and one retry are there so a busy model does not take the demo down. If OpenRouter retires the primary id, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
 
 ## Licenses
 
