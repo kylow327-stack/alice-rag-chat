@@ -1,9 +1,9 @@
 /**
- * Free instruct model on OpenRouter as of 2026-10-29.
- * The catalog had no Llama or Qwen `:free` route that day.
+ * Free chat model on OpenRouter.
+ * Gemma 4 31B Instruct (`google/gemma-4-31b-it:free`) was rate-limited upstream (429).
  * https://openrouter.ai/models?q=free
  */
-export const OPENROUTER_MODEL = "google/gemma-4-31b-it:free";
+export const OPENROUTER_MODEL = "poolside/laguna-s-2.1:free";
 
 export const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 

@@ -8,7 +8,7 @@ There is no upload and no sign-in. Chat is a separate Next.js app, meant to be d
 
 - Next.js App Router, TypeScript, Tailwind
 - Retrieval: a committed local index (no embedding API)
-- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free tier (`google/gemma-4-31b-it:free`)
+- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free tier (`poolside/laguna-s-2.1:free`)
 
 ## Setup
 
@@ -80,12 +80,12 @@ Ranking is cosine similarity plus a lexical overlap bonus, so a name like “Tea
 ## Chat model
 
 ```
-google/gemma-4-31b-it:free
+poolside/laguna-s-2.1:free
 ```
 
 `POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. Optional headers sent on every call: `HTTP-Referer: https://alice-rag.example` (a placeholder until the demo has a public URL) and `X-Title: Alice RAG Chat`.
 
-On 29 October 2026 the OpenRouter catalog had no Llama or Qwen id ending in `:free`. `google/gemma-4-31b-it:free` was listed, with a zero price for prompt and completion tokens, and reasoning off by default. If OpenRouter retires that id, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
+This is Poolside Laguna S 2.1 on OpenRouter’s free route. `google/gemma-4-31b-it:free` was returning 429 from upstream, so chat no longer uses it. The client still rejects any model id that does not end in `:free`. If OpenRouter retires Laguna S 2.1 free, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
 
 ## Licenses
 

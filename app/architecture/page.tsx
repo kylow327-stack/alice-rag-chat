@@ -85,11 +85,11 @@ export default function ArchitecturePage() {
               the OpenAI-style <code className="text-navy">choices[0].message.content</code>.
             </span>
             <span className="mt-2 block">
-              Checked against the OpenRouter catalog on 29 October 2026. No Llama or Qwen
-              model id ending in <code className="text-navy">:free</code> was listed. Gemma 4
-              31B Instruct was, with prompt and completion priced at zero, and reasoning off
-              by default. If that id disappears, replace it with another{" "}
-              <code className="text-navy">:free</code> chat model from the catalog.
+              Chat uses Poolside Laguna S 2.1 on the OpenRouter free route,{" "}
+              <code className="text-navy">poolside/laguna-s-2.1:free</code>. The previous free
+              id, Gemma 4 31B Instruct, was returning 429 from upstream. The client still
+              refuses any model id that does not end in <code className="text-navy">:free</code>.
+              If this id disappears, replace it with another free chat model from the catalog.
             </span>
           </dd>
         </div>
