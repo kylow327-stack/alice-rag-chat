@@ -1,0 +1,15 @@
+{
+  "model": "sentence-transformers/static-retrieval-mrl-en-v1",
+  "tokenizer": "google-bert/bert-base-uncased",
+  "vocabSize": 30522,
+  "dim": 128,
+  "dtype": "float16",
+  "pooling": "mean",
+  "normalize": true,
+  "specialTokens": [
+    "[CLS]",
+    "[SEP]"
+  ],
+  "truncation": "First 128 dimensions. Mean-pooling commutes with truncation, so this matches Matryoshka truncate_dim=128.",
+  "license": "Apache-2.0"
+}

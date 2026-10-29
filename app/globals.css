@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3eee4;
+  --paper-raised: #fffaf3;
+  --ink: #1a1814;
+  --ink-soft: #4e483f;
+  --navy: #1b365d;
+  --navy-deep: #12243f;
+  --signal: #c2410c;
+  --signal-soft: #fde8df;
+  --line: #e3d8c8;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-signal: var(--signal);
+  --color-signal-soft: var(--signal-soft);
+  --color-line: var(--line);
+  --font-sans: var(--font-source-sans), "Segoe UI", sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Iowan Old Style", serif;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 20;
+  background: var(--paper-raised);
+  color: var(--navy);
+  padding: 0.5rem 0.75rem;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+a:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
