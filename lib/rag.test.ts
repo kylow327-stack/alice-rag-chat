@@ -7,6 +7,10 @@ import { isModelRefusal, retrievalQuery } from "./prompt";
 import { answerFromPayload, extractFinalAnswer } from "./extract-answer";
 import { assess, loadCorpus, search } from "./retrieve";
 import {
+  GROQ_CHAT_URL,
+  GROQ_MODEL,
+  MISTRAL_CHAT_URL,
+  MISTRAL_MODEL,
   OPENROUTER_ALL_MODELS,
   OPENROUTER_FALLBACK_MODELS,
   OPENROUTER_MODEL,
@@ -20,9 +24,9 @@ import {
 import {
   assertFreeChatModels,
   isRetryable,
-  OpenRouterError,
-  openRouterConfigError,
-} from "./openrouter";
+  LLMError,
+  llmConfigError,
+} from "./llm";
 
 const SAMPLE = `header
 *** START OF THE PROJECT GUTENBERG EBOOK ALICE ***
@@ -112,61 +116,73 @@ describe("retrieval", () => {
   });
 });
 
-describe("OpenRouter config", () => {
-  it("requires OPENROUTER_API_KEY", () => {
-    const previous = process.env.OPENROUTER_API_KEY;
+describe("LLM provider config", () => {
+  it("requires at least one provider key", () => {
+    const prevM = process.env.MISTRAL_API_KEY;
+    const prevG = process.env.GROQ_API_KEY;
+    const prevO = process.env.OPENROUTER_API_KEY;
+    delete process.env.MISTRAL_API_KEY;
+    delete process.env.GROQ_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
-    assert.equal(openRouterConfigError(), "OPENROUTER_API_KEY is not configured.");
-    process.env.OPENROUTER_API_KEY = "   ";
-    assert.equal(openRouterConfigError(), "OPENROUTER_API_KEY is not configured.");
-    process.env.OPENROUTER_API_KEY = "sk-or-v1-example";
-    assert.equal(openRouterConfigError(), null);
-    const routes = [
-      [OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS],
-      [OPENROUTER_RETRY_MODEL, ...OPENROUTER_RETRY_FALLBACKS],
-      [OPENROUTER_RETRY2_MODEL, ...OPENROUTER_RETRY2_FALLBACKS],
-      [OPENROUTER_RETRY3_MODEL, ...OPENROUTER_RETRY3_FALLBACKS],
-    ];
-    assert.ok(OPENROUTER_FALLBACK_MODELS.length <= 2);
-    assert.ok(OPENROUTER_RETRY_FALLBACKS.length <= 2);
-    assert.ok(OPENROUTER_RETRY2_FALLBACKS.length <= 2);
-    assert.ok(OPENROUTER_RETRY3_FALLBACKS.length <= 2);
-    for (const ids of routes) {
-      assert.ok(ids.length <= 3);
-      assert.doesNotThrow(() => assertFreeChatModels(ids));
-      for (const id of ids) {
-        assert.match(id, /:free$/);
-        assert.equal(id.includes("gpt-4o"), false);
-      }
-    }
-    assert.throws(() => assertFreeChatModels(["openai/gpt-4o"]), OpenRouterError);
-    assert.throws(() => assertFreeChatModels(["nvidia/nemotron-3.5-lightning"]), OpenRouterError);
-    if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = previous;
+    assert.ok(llmConfigError());
+    process.env.MISTRAL_API_KEY = "  ";
+    assert.ok(llmConfigError());
+    process.env.MISTRAL_API_KEY = "test-key";
+    assert.equal(llmConfigError(), null);
+    // Restore
+    if (prevM === undefined) delete process.env.MISTRAL_API_KEY;
+    else process.env.MISTRAL_API_KEY = prevM;
+    if (prevG === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = prevG;
+    if (prevO === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = prevO;
   });
 
-  it("keeps every configured model on the free tier and unique", () => {
+  it("configures Mistral as primary provider", () => {
+    assert.match(MISTRAL_CHAT_URL, /api\.mistral\.ai/);
+    assert.equal(MISTRAL_MODEL, "mistral-small-latest");
+  });
+
+  it("configures Groq as secondary provider", () => {
+    assert.match(GROQ_CHAT_URL, /api\.groq\.com/);
+    assert.equal(GROQ_MODEL, "llama-3.3-70b-versatile");
+  });
+
+  it("keeps every OpenRouter fallback model on the free tier and unique", () => {
     assert.equal(new Set(OPENROUTER_ALL_MODELS).size, OPENROUTER_ALL_MODELS.length);
     for (const id of OPENROUTER_ALL_MODELS) {
       assert.match(id, /:free$/, `${id} must be a free route`);
     }
   });
 
-  it("spreads models across distinct providers for rate-limit diversity", () => {
+  it("spreads OpenRouter models across distinct providers for rate-limit diversity", () => {
     const providers = new Set(OPENROUTER_ALL_MODELS.map((id) => id.split("/")[0]));
-    // Twelve models should not all sit behind one or two providers, or a
-    // provider-wide rate limit takes out every fallback at the same time.
     assert.ok(providers.size >= 6, `expected >= 6 providers, got ${providers.size}`);
   });
 
-  it("falls through to the next trio on a retired model id", () => {
-    // 404 = OpenRouter retired that model id. The next trio may still work.
+  it("validates OpenRouter free-tier model ids", () => {
+    const routes = [
+      [OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS],
+      [OPENROUTER_RETRY_MODEL, ...OPENROUTER_RETRY_FALLBACKS],
+      [OPENROUTER_RETRY2_MODEL, ...OPENROUTER_RETRY2_FALLBACKS],
+      [OPENROUTER_RETRY3_MODEL, ...OPENROUTER_RETRY3_FALLBACKS],
+    ];
+    for (const ids of routes) {
+      assert.ok(ids.length <= 3);
+      assert.doesNotThrow(() => assertFreeChatModels(ids));
+      for (const id of ids) {
+        assert.match(id, /:free$/);
+      }
+    }
+    assert.throws(() => assertFreeChatModels(["openai/gpt-4o"]), LLMError);
+    assert.throws(() => assertFreeChatModels(["nvidia/nemotron-3.5-lightning"]), LLMError);
+  });
+
+  it("falls through to the next provider on a retired model id", () => {
     assert.equal(isRetryable(404), true);
-    // Rate limits and upstream hiccups are retryable.
     assert.equal(isRetryable(429), true);
     assert.equal(isRetryable(408), true);
     assert.equal(isRetryable(503), true);
-    // A bad key or a forbidden key is fatal — no other model will help.
     assert.equal(isRetryable(401), false);
     assert.equal(isRetryable(403), false);
     assert.equal(isRetryable(400), false);

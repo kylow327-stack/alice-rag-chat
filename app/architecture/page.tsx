@@ -3,12 +3,15 @@ import {
   COSINE_WITHOUT_OVERLAP,
   EMBEDDING_DIM,
   EMBEDDING_MODEL,
+  GROQ_CHAT_URL,
+  GROQ_MODEL,
   GUTENBERG_ID,
   LEXICAL_WEIGHT,
-  OPENROUTER_BACKOFF_BASE_MS,
+  BACKOFF_BASE_MS,
+  MISTRAL_CHAT_URL,
+  MISTRAL_MODEL,
   OPENROUTER_CHAT_URL,
   OPENROUTER_FALLBACK_MODELS,
-  OPENROUTER_MAX_ROUNDS,
   OPENROUTER_MODEL,
   OPENROUTER_REFERER,
   OPENROUTER_RETRY2_FALLBACKS,
@@ -53,7 +56,7 @@ const STEPS = [
   },
   {
     title: "Generate",
-    body: `Otherwise the passages and the question go to OpenRouter’s free tier, starting at ${OPENROUTER_MODEL} and failing over to other :free models if that route is busy. No paid model is called. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
+    body: `Otherwise the passages and the question go to a multi-provider LLM cascade. Mistral is tried first (${MISTRAL_MODEL} via ${MISTRAL_CHAT_URL}); if it is rate-limited, Groq is tried next (${GROQ_MODEL} via ${GROQ_CHAT_URL}); if both are busy, OpenRouter's free-tier rotation kicks in as the last resort. All three are OpenAI-compatible. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
   },
 ];
 
@@ -64,8 +67,8 @@ export default function ArchitecturePage() {
       <h1 className="mt-2 font-serif text-4xl text-navy sm:text-5xl">Architecture</h1>
       <p className="mt-4 text-lg text-ink-soft">
         A small retrieval-augmented chat over one public-domain book. There is no
-        account, no file upload, and no hosted embedding API. Generation uses
-        OpenRouter’s free tier.
+        account, no file upload, and no hosted embedding API. Generation uses a
+        multi-provider cascade: Mistral (primary) → Groq (secondary) → OpenRouter free tier (fallback).
       </p>
 
       <ol className="mt-8 flex flex-col gap-4">
@@ -82,54 +85,63 @@ export default function ArchitecturePage() {
       <h2 className="mt-10 font-serif text-2xl text-navy">Models</h2>
       <dl className="mt-4 flex flex-col gap-4">
         <div className="border-l-4 border-navy pl-3">
-          <dt className="text-sm font-semibold text-navy">Chat</dt>
+          <dt className="text-sm font-semibold text-navy">Chat — Provider Cascade</dt>
           <dd className="mt-1 text-ink">
-            <code className="bg-paper px-1.5 py-0.5 text-navy">{OPENROUTER_MODEL}</code>
-            <span className="mt-2 block">
-              <code className="text-navy">POST {OPENROUTER_CHAT_URL}</code> with{" "}
-              <code className="text-navy">Authorization: Bearer $OPENROUTER_API_KEY</code>,{" "}
-              <code className="text-navy">HTTP-Referer: {OPENROUTER_REFERER}</code>, and{" "}
-              <code className="text-navy">X-Title: {OPENROUTER_TITLE}</code>. Temperature is 0.2. The reply is
-              the OpenAI-style <code className="text-navy">choices[0].message.content</code>.
-              A separate reasoning trace is ignored. If the text itself opens with a
+            <span className="block">
+              The app tries three OpenAI-compatible providers in order:
+            </span>
+            <ol className="mt-2 list-decimal pl-5">
+              <li>
+                <strong>Mistral</strong> —{" "}
+                <code className="bg-paper px-1.5 py-0.5 text-navy">{MISTRAL_MODEL}</code> via{" "}
+                <code className="text-navy">{MISTRAL_CHAT_URL}</code>. Free tier: ~1 RPS / 500K TPM.
+                Generous enough for a demo; the primary provider.
+              </li>
+              <li>
+                <strong>Groq</strong> —{" "}
+                <code className="bg-paper px-1.5 py-0.5 text-navy">{GROQ_MODEL}</code> via{" "}
+                <code className="text-navy">{GROQ_CHAT_URL}</code>. Free tier: 30 RPM / 1,000 RPD.
+                Ultra-fast LPU inference; the secondary fallback.
+              </li>
+              <li>
+                <strong>OpenRouter</strong> — 4 trios of free models via{" "}
+                <code className="text-navy">{OPENROUTER_CHAT_URL}</code>. The last resort.
+                One request tries <code className="text-navy">{OPENROUTER_MODEL}</code>, then{" "}
+                {OPENROUTER_FALLBACK_MODELS.join(" and ")}. If that free trio is
+                rate-limited or returns nothing, the server waits{" "}
+                {BACKOFF_BASE_MS / 1000}s and tries a second free-only trio
+                ({OPENROUTER_RETRY_MODEL} + {OPENROUTER_RETRY_FALLBACKS.join(", ")}),
+                then a third ({OPENROUTER_RETRY2_MODEL} +{" "}
+                {OPENROUTER_RETRY2_FALLBACKS.join(", ")}), then a fourth
+                ({OPENROUTER_RETRY3_MODEL} + {OPENROUTER_RETRY3_FALLBACKS.join(", ")}),
+                with the backoff doubling each round. The server also respects the{" "}
+                <code className="text-navy">Retry-After</code> header. The client refuses any
+                OpenRouter model id that does not end in <code className="text-navy">:free</code>.
+              </li>
+            </ol>
+            <span className="mt-3 block">
+              Temperature is 0.2 across all providers. The reply is the OpenAI-style{" "}
+              <code className="text-navy">choices[0].message.content</code>. A separate reasoning
+              trace is ignored unless content is empty, in which case the server looks for a
+              final-answer marker inside the reasoning field. If the text itself opens with a
               thinking-process preamble, only the final answer is shown.
             </span>
             <span className="mt-2 block">
-              One request tries {OPENROUTER_MODEL}, then{" "}
-              {OPENROUTER_FALLBACK_MODELS.join(" and ")}. If that free trio is
-              rate-limited or returns nothing, the server waits{" "}
-              {OPENROUTER_BACKOFF_BASE_MS / 1000}s and tries a second free-only trio
-              ({OPENROUTER_RETRY_MODEL} + {OPENROUTER_RETRY_FALLBACKS.join(", ")}),
-              then a third ({OPENROUTER_RETRY2_MODEL} +{" "}
-              {OPENROUTER_RETRY2_FALLBACKS.join(", ")}), then a fourth
-              ({OPENROUTER_RETRY3_MODEL} + {OPENROUTER_RETRY3_FALLBACKS.join(", ")}),
-              with the backoff doubling each round. The server also respects the{" "}
-              <code className="text-navy">Retry-After</code> header when OpenRouter
-              sends one. Up to {OPENROUTER_MAX_ROUNDS} model trios are tried in total.
-              Shared-pool 429s are common on these routes; the staggered retry with
-              provider diversity usually gets through. The client refuses any model id
-              that does not end in <code className="text-navy">:free</code>. There is
-              no paid fallback. The only server secret is{" "}
-              <code className="text-navy">OPENROUTER_API_KEY</code>.
-            </span>
-            <span className="mt-2 block">
-              The free tier retires models regularly, so a retired id returns 404.
-              That is treated as a model-level failure and the request falls through
-              to the next trio instead of failing outright. A 404 on every trio means
-              the configured ids have drifted and need updating. The{" "}
-              <code className="text-navy">npm run check:models</code> script compares
-              every configured id against OpenRouter&apos;s live catalog and fails
-              when one has been retired, so drift is caught before it reaches users.
+              The OpenRouter free tier retires models regularly, so a retired id returns 404.
+              That is treated as a model-level failure and the request falls through to the next
+              trio instead of failing outright. The{" "}
+              <code className="text-navy">npm run check:models</code> script compares every
+              configured OpenRouter id against the live catalog and fails when one has been retired.
             </span>
             <span className="mt-2 block">
               The client also retries automatically: on a 502{" "}
-              <code className="text-navy">provider_error</code>, it waits and sends
-              the request again (up to 3 retries with 2s/4s/8s backoff), showing a
-              &ldquo;Retrying…&rdquo; indicator instead of an error.
+              <code className="text-navy">provider_error</code>, it waits and sends the request
+              again (up to 3 retries with 2s/4s/8s backoff), showing a &ldquo;Retrying…&rdquo;
+              indicator instead of an error.
             </span>
             <span className="mt-2 block">
-              Identical questions within a 5-minute window are served from an
-              in-memory cache, so repeat questions do not hit OpenRouter at all.
+              Identical questions within a 5-minute window are served from an in-memory cache,
+              so repeat questions do not hit any provider at all.
             </span>
           </dd>
         </div>

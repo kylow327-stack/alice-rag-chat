@@ -1,4 +1,4 @@
-import { completeChat, OpenRouterError, openRouterConfigError } from "@/lib/openrouter";
+import { completeChat, LLMError, llmConfigError } from "@/lib/llm";
 import {
   groundedMessages,
   isModelRefusal,
@@ -83,7 +83,7 @@ function parseMessages(body: unknown): ChatMessage[] | null {
 }
 
 export async function POST(request: Request) {
-  const configError = openRouterConfigError();
+  const configError = llmConfigError();
   if (configError) {
     return json({ error: configError, code: "missing_api_key" }, 503);
   }
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "The model provider returned an error.";
-    const status = error instanceof OpenRouterError ? error.status : 502;
+    const status = error instanceof LLMError ? error.status : 502;
     return json({ error: message, code: "provider_error" }, status);
   }
 }

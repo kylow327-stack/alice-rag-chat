@@ -10,7 +10,7 @@ There is no upload and no sign-in. Chat is a separate Next.js app, meant to be d
 
 - Next.js App Router, TypeScript, Tailwind
 - Retrieval: a committed local index (no embedding API)
-- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free models with automatic `:free` fallbacks, exponential backoff, and client-side retry
+- Generation: multi-provider cascade — [Mistral AI](https://console.mistral.ai) (primary, ~1 RPS / 500K TPM free tier) → [Groq](https://groq.com) (secondary, 30 RPM / 1,000 RPD) → [OpenRouter](https://openrouter.ai) free models (fallback, 4-trio rotation). All OpenAI-compatible.
 
 ## Setup
 
@@ -22,39 +22,49 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). The architecture write-up is at `/architecture`.
 
-`npm test` checks chunking, embeddings, and retrieval. It does not call OpenRouter.
+`npm test` checks chunking, embeddings, retrieval, and provider config. It does not call any LLM API.
 
 `npm run build` compiles the app. It does not need a token and it does not re-download the book.
 
 ## Environment
 
-Copy the example and set one variable:
+Copy the example and set at least one API key:
 
 ```bash
 cp .env.example .env.local
 ```
 
 ```
+# Primary provider (free tier ~1 RPS / 500K TPM)
+MISTRAL_API_KEY=
+
+# Secondary provider (30 RPM / 1,000 RPD)
+GROQ_API_KEY=
+
+# Fallback provider (free tier, 4-trio rotation)
 OPENROUTER_API_KEY=
 ```
 
-Create a free key at [openrouter.ai/keys](https://openrouter.ai/keys). No other API keys are used. Retrieval does not call OpenRouter.
+Create free keys at:
+- [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) — Mistral (primary)
+- [console.groq.com/keys](https://console.groq.com/keys) — Groq (secondary)
+- [openrouter.ai/keys](https://openrouter.ai/keys) — OpenRouter (fallback)
 
-Without that variable, `POST /api/chat` returns **503**:
+The app tries providers in order: Mistral → Groq → OpenRouter. At least one key must be set. If Mistral is rate-limited, Groq is tried next; if Groq is also rate-limited, OpenRouter's 4-trio rotation kicks in as the last resort.
+
+Without any key, `POST /api/chat` returns **503**:
 
 ```json
-{ "error": "OPENROUTER_API_KEY is not configured.", "code": "missing_api_key" }
+{ "error": "No LLM API key is configured. Set MISTRAL_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.", "code": "missing_api_key" }
 ```
-
-That response is expected until the key is set. The chat page explains it.
 
 ### Vercel
 
 Create a new project for this repo (its own app, not a subpath of another site).
 
 1. Framework preset: Next.js. Build command: `npm run build`.
-2. Environment variable: `OPENROUTER_API_KEY` for Production and Preview.
-3. Redeploy after saving it.
+2. Environment variables: Set `MISTRAL_API_KEY`, `GROQ_API_KEY`, and/or `OPENROUTER_API_KEY` for Production and Preview. At least one is required.
+3. Redeploy after saving them.
 
 Do not commit `.env.local`.
 
@@ -65,10 +75,10 @@ Do not commit `.env.local`.
 | `npm run dev` | Local dev server |
 | `npm run build` | Production build |
 | `npm start` | Serve the production build |
-| `npm test` | Retrieval tests, no network, no OpenRouter key |
+| `npm test` | Retrieval + provider config tests, no network |
 | `npm run lint` | ESLint |
 | `npm run ingest` | Rebuild `data/` from Gutenberg and the embedding model |
-| `npm run check:models` | Verify every configured free model id against OpenRouter's live catalog |
+| `npm run check:models` | Verify OpenRouter fallback model ids against the live catalog |
 
 Ingest downloads the book and the Apache-2.0 embedding matrix into `.cache/` (gitignored), then rewrites the committed index. You do not need to run it to build or deploy; the index is already in the repo. Run it when you want to regenerate the chunks.
 

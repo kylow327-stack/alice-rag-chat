@@ -1,9 +1,13 @@
 /**
- * Check every configured free model id against OpenRouter's live catalog.
+ * Check every configured OpenRouter fallback model id against the live catalog.
  *
- * The free tier rotates models often. A retired id returns 404 at request
- * time, which used to abort the whole chat request. This script fails loudly
- * at build time instead, so a retired id is caught before it reaches users.
+ * The app uses a provider cascade: Mistral (primary) → Groq (secondary) →
+ * OpenRouter (fallback with 4 trios). Mistral and Groq models are stable
+ * first-party APIs that don't rotate, so this script only checks the
+ * OpenRouter fallback ids — those are the ones that get retired regularly.
+ *
+ * A retired id returns 404 at request time. This script fails loudly at
+ * build time instead, so a retired id is caught before it reaches users.
  *
  * Usage:
  *   npm run check:models
@@ -11,7 +15,7 @@
  * No API key needed — the catalog endpoint is public.
  */
 
-import { OPENROUTER_ALL_MODELS } from "../lib/constants";
+import { MISTRAL_MODEL, GROQ_MODEL, OPENROUTER_ALL_MODELS } from "../lib/constants";
 
 const CATALOG_URL = "https://openrouter.ai/api/v1/models";
 
@@ -37,7 +41,12 @@ async function fetchCatalog(): Promise<CatalogEntry[]> {
 }
 
 function main(): void {
-  console.log("Checking configured free models against the live OpenRouter catalog…\n");
+  console.log("Provider cascade: Mistral (primary) → Groq (secondary) → OpenRouter (fallback)\n");
+  console.log(`  Mistral model:  ${MISTRAL_MODEL}`);
+  console.log(`  Groq model:     ${GROQ_MODEL}`);
+  console.log(`  OpenRouter:     ${OPENROUTER_ALL_MODELS.length} free models in 4 trios\n`);
+
+  console.log("Checking OpenRouter fallback ids against the live catalog…\n");
 
   const configured: string[] = [...OPENROUTER_ALL_MODELS];
 
