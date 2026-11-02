@@ -1,14 +1,16 @@
 # Alice — grounded chat
 
-Public demo that answers questions from *Alice’s Adventures in Wonderland* (Project Gutenberg eBook #11). Answers cite the passage they came from. If the question is not in the book, the app says so.
+Public demo that answers questions from *Alice's Adventures in Wonderland* (Project Gutenberg eBook #11). Answers cite the passage they came from. If the question is not in the book, the app says so.
 
 There is no upload and no sign-in. Chat is a separate Next.js app, meant to be deployed as its own Vercel project (not a page under another domain).
+
+**Live demo:** https://alice-rag-chat.vercel.app · [Architecture page](https://alice-rag-chat.vercel.app/architecture)
 
 ## Stack
 
 - Next.js App Router, TypeScript, Tailwind
 - Retrieval: a committed local index (no embedding API)
-- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free models, starting at `nvidia/nemotron-3.5-lightning:free` with automatic `:free` fallbacks
+- Generation: [OpenRouter](https://openrouter.ai/docs/quickstart) free models with automatic `:free` fallbacks, exponential backoff, and client-side retry
 
 ## Setup
 
@@ -75,7 +77,7 @@ Chunks of the twelve chapters are stored in `data/alice-index.json` with precomp
 
 Embeddings are [sentence-transformers/static-retrieval-mrl-en-v1](https://huggingface.co/sentence-transformers/static-retrieval-mrl-en-v1): a static token table, mean-pooled with the bert-base-uncased tokenizer, truncated to 128 dimensions, then normalized. The server embeds a question with that same table. It does not load ONNX and it does not call an embedding API, so a cold start stays a file read plus a few hundred dot products. Regenerating the index with `npm run ingest` downloads the public weight file; chat never does.
 
-Ranking is cosine similarity plus a lexical overlap bonus, so a name like “Tea-Party” is not lost to a vague neighbor. Low scores never call the model. Details and the exact model string are on the architecture page.
+Ranking is cosine similarity plus a lexical overlap bonus, so a name like "Tea-Party" is not lost to a vague neighbor. Low scores never call the model. Details and the exact model string are on the architecture page.
 
 ## Chat model
 
@@ -83,11 +85,17 @@ Ranking is cosine similarity plus a lexical overlap bonus, so a name like “Tea
 nvidia/nemotron-3.5-lightning:free
 ```
 
-Fallbacks on the same request: `liquid/lfm-2.5-2.6b:free`, `recursive/flint-v1.0:free`. If that trio is rate-limited or empty, one more free-only request tries `dots-studio/dots-3-note-preview:free`, then `cohere/north-mini-code:free` and `google/gemma-4-31b-it:free`.
+Three model trios are tried sequentially, each targeting a different rate-limit bucket on OpenRouter's free tier:
 
-`POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. Optional headers sent on every call: `HTTP-Referer: https://alice-rag.example` (a placeholder until the demo has a public URL) and `X-Title: Alice RAG Chat`.
+1. **Primary trio:** `nvidia/nemotron-3.5-lightning:free` → `liquid/lfm-2.5-2.6b:free` → `recursive/flint-v1.0:free`
+2. **Retry trio:** `meta-llama/llama-3.3-70b-instruct:free` → `cohere/north-mini-code:free` → `google/gemma-4-31b-it:free`
+3. **Final trio:** `qwen/qwen-2.5-72b-instruct:free` → `mistralai/mistral-small-3.2-24b-instruct:free` → `deepseek/deepseek-r1-distill-llama-70b:free`
 
-Every id ends in `:free`. The client rejects anything else, so a paid model is never a fallback. The only environment variable is `OPENROUTER_API_KEY`. Free routes share an upstream pool and often return 429; the fallbacks and one retry are there so a busy model does not take the demo down. If OpenRouter retires the primary id, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
+Between rounds, the server applies exponential backoff (2s → 4s → 8s) with random jitter (0–499ms) and respects the `Retry-After` header from 429 responses. The client also auto-retries on 502 `provider_error` up to 3 times with its own backoff.
+
+`POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. Headers sent on every call: `HTTP-Referer: https://alice-rag-chat.vercel.app/` and `X-Title: Alice RAG Chat`.
+
+Every id ends in `:free`. The client rejects anything else, so a paid model is never a fallback. The only environment variable is `OPENROUTER_API_KEY`. Free routes share an upstream pool and often return 429; the three trios, backoff, and client retry are there so a busy model does not take the demo down. If OpenRouter retires the primary id, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
 
 ## Licenses
 
