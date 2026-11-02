@@ -4,8 +4,13 @@
  * lets the platform pick the first available one.
  *
  * Provider diversity matters: when the shared free pool is rate-limited,
- * spreading across different providers (Nvidia, Liquid, Google, Meta, etc.)
- * gives each trio a better chance of landing on a different rate-limit bucket.
+ * spreading across different providers (Nvidia, Liquid, Google, Thinking Machines,
+ * Xingchen, Recursive, Cohere, Dots Studio) gives each trio a better chance of
+ * landing on a different rate-limit bucket.
+ *
+ * The free tier rotates models often. Every id below was checked against
+ * https://openrouter.ai/api/v1/models on 3 Nov 2026. `npm run check:models`
+ * re-checks them against the live catalog and fails if any id has been retired.
  *
  * https://openrouter.ai/models?q=free
  */
@@ -18,19 +23,43 @@ export const OPENROUTER_FALLBACK_MODELS = [
 ] as const;
 
 /** Second free-only trio, used if the first call is rate-limited or empty. */
-export const OPENROUTER_RETRY_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+export const OPENROUTER_RETRY_MODEL = "thinkingmachines/inkling:free";
 
 export const OPENROUTER_RETRY_FALLBACKS = [
-  "google/gemma-4-31b-it:free",
-  "dots-studio/dots-3-note-preview:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "xingchen-agi/xing4.0-29b-a4b:free",
 ] as const;
 
 /** Third free-only trio, used if the first two are both rate-limited. */
-export const OPENROUTER_RETRY2_MODEL = "deepseek/deepseek-r1:free";
+export const OPENROUTER_RETRY2_MODEL = "google/gemma-4-31b-it:free";
 
 export const OPENROUTER_RETRY2_FALLBACKS = [
-  "qwen/qwen3-32b:free",
+  "dots-studio/dots-3-note-preview:free",
   "cohere/north-mini-code:free",
+] as const;
+
+/** Fourth free-only trio — the last line of defence before giving up. */
+export const OPENROUTER_RETRY3_MODEL = "thinkingmachines/inkling-small:free";
+
+export const OPENROUTER_RETRY3_FALLBACKS = [
+  "google/gemma-4-26b-a4b-it:free",
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+] as const;
+
+/**
+ * Every free model id the app may call, in the order it is tried.
+ * Used by the model-catalog check to fail loudly when an id has been retired
+ * instead of letting it 404 at request time.
+ */
+export const OPENROUTER_ALL_MODELS = [
+  OPENROUTER_MODEL,
+  ...OPENROUTER_FALLBACK_MODELS,
+  OPENROUTER_RETRY_MODEL,
+  ...OPENROUTER_RETRY_FALLBACKS,
+  OPENROUTER_RETRY2_MODEL,
+  ...OPENROUTER_RETRY2_FALLBACKS,
+  OPENROUTER_RETRY3_MODEL,
+  ...OPENROUTER_RETRY3_FALLBACKS,
 ] as const;
 
 /** Base delay (ms) between model-trio retries. Doubles each round. */
@@ -40,7 +69,7 @@ export const OPENROUTER_BACKOFF_BASE_MS = 2_000;
 export const OPENROUTER_BACKOFF_MAX_MS = 16_000;
 
 /** How many model-trio rounds to attempt before giving up. */
-export const OPENROUTER_MAX_ROUNDS = 3;
+export const OPENROUTER_MAX_ROUNDS = 4;
 
 export const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 

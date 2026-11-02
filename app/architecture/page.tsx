@@ -13,6 +13,8 @@ import {
   OPENROUTER_REFERER,
   OPENROUTER_RETRY2_FALLBACKS,
   OPENROUTER_RETRY2_MODEL,
+  OPENROUTER_RETRY3_FALLBACKS,
+  OPENROUTER_RETRY3_MODEL,
   OPENROUTER_RETRY_FALLBACKS,
   OPENROUTER_RETRY_MODEL,
   OPENROUTER_TITLE,
@@ -99,8 +101,9 @@ export default function ArchitecturePage() {
               {OPENROUTER_BACKOFF_BASE_MS / 1000}s and tries a second free-only trio
               ({OPENROUTER_RETRY_MODEL} + {OPENROUTER_RETRY_FALLBACKS.join(", ")}),
               then a third ({OPENROUTER_RETRY2_MODEL} +{" "}
-              {OPENROUTER_RETRY2_FALLBACKS.join(", ")}), with the backoff doubling
-              each round. The server also respects the{" "}
+              {OPENROUTER_RETRY2_FALLBACKS.join(", ")}), then a fourth
+              ({OPENROUTER_RETRY3_MODEL} + {OPENROUTER_RETRY3_FALLBACKS.join(", ")}),
+              with the backoff doubling each round. The server also respects the{" "}
               <code className="text-navy">Retry-After</code> header when OpenRouter
               sends one. Up to {OPENROUTER_MAX_ROUNDS} model trios are tried in total.
               Shared-pool 429s are common on these routes; the staggered retry with
@@ -108,6 +111,15 @@ export default function ArchitecturePage() {
               that does not end in <code className="text-navy">:free</code>. There is
               no paid fallback. The only server secret is{" "}
               <code className="text-navy">OPENROUTER_API_KEY</code>.
+            </span>
+            <span className="mt-2 block">
+              The free tier retires models regularly, so a retired id returns 404.
+              That is treated as a model-level failure and the request falls through
+              to the next trio instead of failing outright. A 404 on every trio means
+              the configured ids have drifted and need updating. The{" "}
+              <code className="text-navy">npm run check:models</code> script compares
+              every configured id against OpenRouter&apos;s live catalog and fails
+              when one has been retired, so drift is caught before it reaches users.
             </span>
             <span className="mt-2 block">
               The client also retries automatically: on a 502{" "}

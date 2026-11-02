@@ -8,6 +8,8 @@ import {
   OPENROUTER_REFERER,
   OPENROUTER_RETRY2_FALLBACKS,
   OPENROUTER_RETRY2_MODEL,
+  OPENROUTER_RETRY3_FALLBACKS,
+  OPENROUTER_RETRY3_MODEL,
   OPENROUTER_RETRY_FALLBACKS,
   OPENROUTER_RETRY_MODEL,
   OPENROUTER_TITLE,
@@ -68,8 +70,18 @@ const RETRY2_ROUTE: FreeRoute = {
   models: OPENROUTER_RETRY2_FALLBACKS,
 };
 
+const RETRY3_ROUTE: FreeRoute = {
+  model: OPENROUTER_RETRY3_MODEL,
+  models: OPENROUTER_RETRY3_FALLBACKS,
+};
+
 /** All trios, tried in order. */
-const ALL_ROUTES: FreeRoute[] = [PRIMARY_ROUTE, RETRY_ROUTE, RETRY2_ROUTE];
+const ALL_ROUTES: FreeRoute[] = [
+  PRIMARY_ROUTE,
+  RETRY_ROUTE,
+  RETRY2_ROUTE,
+  RETRY3_ROUTE,
+];
 
 function isTimeout(error: unknown): boolean {
   return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
@@ -94,9 +106,18 @@ function providerError(status: number, model: string): OpenRouterError {
   return new OpenRouterError(502, "OpenRouter returned an error. Try again shortly.");
 }
 
-/** True if the HTTP status is worth retrying with a different trio. */
-function isRetryable(status: number): boolean {
-  return status === 429 || status === 408 || status === 503 || status < 400;
+/**
+ * True if the HTTP status is worth retrying with a different trio.
+ *
+ * 404 means OpenRouter no longer serves that model id. OpenRouter retires
+ * free-tier models regularly, so a 404 is a *model-level* failure: the next
+ * trio may still work. Treating it as fatal made the whole request fail the
+ * moment the primary trio hit a retired id.
+ *
+ * 401/403 stay fatal — the key is wrong, so no other model will help.
+ */
+export function isRetryable(status: number): boolean {
+  return status === 429 || status === 408 || status === 503 || status === 404 || status < 400;
 }
 
 /** Parse Retry-After header (seconds or HTTP-date). Returns ms, or null. */
@@ -192,6 +213,7 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
   const maxRounds = Math.min(OPENROUTER_MAX_ROUNDS, ALL_ROUTES.length);
   let lastStatus = 0;
   let lastModel = "";
+  let sawRetired = false;
 
   for (let round = 0; round < maxRounds; round++) {
     const route = ALL_ROUTES[round];
@@ -201,6 +223,7 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
 
     lastStatus = result.status;
     lastModel = route.model;
+    if (result.status === 404) sawRetired = true;
 
     // Non-retryable error — stop immediately.
     if (!isRetryable(result.status)) {
@@ -219,6 +242,12 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
   }
 
   // All rounds exhausted.
+  if (sawRetired && lastStatus === 404) {
+    throw new OpenRouterError(
+      502,
+      "OpenRouter no longer serves the configured free models. Run `npm run check:models` and update lib/constants.ts.",
+    );
+  }
   if (lastStatus === 429 || lastStatus === 408 || lastStatus === 503) {
     throw new OpenRouterError(502, RATE_LIMIT_MESSAGE);
   }

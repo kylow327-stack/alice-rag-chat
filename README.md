@@ -68,6 +68,7 @@ Do not commit `.env.local`.
 | `npm test` | Retrieval tests, no network, no OpenRouter key |
 | `npm run lint` | ESLint |
 | `npm run ingest` | Rebuild `data/` from Gutenberg and the embedding model |
+| `npm run check:models` | Verify every configured free model id against OpenRouter's live catalog |
 
 Ingest downloads the book and the Apache-2.0 embedding matrix into `.cache/` (gitignored), then rewrites the committed index. You do not need to run it to build or deploy; the index is already in the repo. Run it when you want to regenerate the chunks.
 
@@ -85,17 +86,28 @@ Ranking is cosine similarity plus a lexical overlap bonus, so a name like "Tea-P
 nvidia/nemotron-3.5-lightning:free
 ```
 
-Three model trios are tried sequentially, each targeting a different rate-limit bucket on OpenRouter's free tier:
+Four model trios are tried sequentially, spread across eight providers so each one hits a different rate-limit bucket on OpenRouter's free tier:
 
 1. **Primary trio:** `nvidia/nemotron-3.5-lightning:free` → `liquid/lfm-2.5-2.6b:free` → `recursive/flint-v1.0:free`
-2. **Retry trio:** `meta-llama/llama-3.3-70b-instruct:free` → `cohere/north-mini-code:free` → `google/gemma-4-31b-it:free`
-3. **Final trio:** `qwen/qwen-2.5-72b-instruct:free` → `mistralai/mistral-small-3.2-24b-instruct:free` → `deepseek/deepseek-r1-distill-llama-70b:free`
+2. **Retry trio:** `thinkingmachines/inkling:free` → `nvidia/nemotron-3-ultra-550b-a55b:free` → `xingchen-agi/xing4.0-29b-a4b:free`
+3. **Third trio:** `google/gemma-4-31b-it:free` → `dots-studio/dots-3-note-preview:free` → `cohere/north-mini-code:free`
+4. **Fourth trio:** `thinkingmachines/inkling-small:free` → `google/gemma-4-26b-a4b-it:free` → `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`
 
-Between rounds, the server applies exponential backoff (2s → 4s → 8s) with random jitter (0–499ms) and respects the `Retry-After` header from 429 responses. The client also auto-retries on 502 `provider_error` up to 3 times with its own backoff.
+Between rounds, the server applies exponential backoff (2s → 4s → 8s) with random jitter (0–499ms) and respects the `Retry-After` header from 429 responses. A **404 means OpenRouter retired that model id** — it falls through to the next trio rather than failing the request. The client also auto-retries on 502 `provider_error` up to 3 times with its own backoff.
 
 `POST https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer $OPENROUTER_API_KEY`. Headers sent on every call: `HTTP-Referer: https://alice-rag-chat.vercel.app/` and `X-Title: Alice RAG Chat`.
 
-Every id ends in `:free`. The client rejects anything else, so a paid model is never a fallback. The only environment variable is `OPENROUTER_API_KEY`. Free routes share an upstream pool and often return 429; the three trios, backoff, and client retry are there so a busy model does not take the demo down. If OpenRouter retires the primary id, pick another `:free` chat model from [openrouter.ai/models](https://openrouter.ai/models?q=free) and update `OPENROUTER_MODEL` in `lib/constants.ts`.
+Every id ends in `:free`. The client rejects anything else, so a paid model is never a fallback. The only environment variable is `OPENROUTER_API_KEY`. Free routes share an upstream pool and often return 429; the four trios, backoff, and client retry are there so a busy model does not take the demo down.
+
+### Checking model ids
+
+OpenRouter retires free-tier models regularly, and a retired id returns 404. Run this before deploying or when chat starts failing:
+
+```bash
+npm run check:models
+```
+
+It compares every configured id against OpenRouter's live catalog and prints the free chat models that are not yet in the rotation. No API key needed. When it reports a retired id, pick a replacement from its list and update `lib/constants.ts`.
 
 ## Licenses
 

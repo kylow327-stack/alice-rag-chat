@@ -7,12 +7,22 @@ import { isModelRefusal, retrievalQuery } from "./prompt";
 import { answerFromPayload, extractFinalAnswer } from "./extract-answer";
 import { assess, loadCorpus, search } from "./retrieve";
 import {
+  OPENROUTER_ALL_MODELS,
   OPENROUTER_FALLBACK_MODELS,
   OPENROUTER_MODEL,
+  OPENROUTER_RETRY2_FALLBACKS,
+  OPENROUTER_RETRY2_MODEL,
+  OPENROUTER_RETRY3_FALLBACKS,
+  OPENROUTER_RETRY3_MODEL,
   OPENROUTER_RETRY_FALLBACKS,
   OPENROUTER_RETRY_MODEL,
 } from "./constants";
-import { assertFreeChatModels, OpenRouterError, openRouterConfigError } from "./openrouter";
+import {
+  assertFreeChatModels,
+  isRetryable,
+  OpenRouterError,
+  openRouterConfigError,
+} from "./openrouter";
 
 const SAMPLE = `header
 *** START OF THE PROJECT GUTENBERG EBOOK ALICE ***
@@ -114,9 +124,13 @@ describe("OpenRouter config", () => {
     const routes = [
       [OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS],
       [OPENROUTER_RETRY_MODEL, ...OPENROUTER_RETRY_FALLBACKS],
+      [OPENROUTER_RETRY2_MODEL, ...OPENROUTER_RETRY2_FALLBACKS],
+      [OPENROUTER_RETRY3_MODEL, ...OPENROUTER_RETRY3_FALLBACKS],
     ];
     assert.ok(OPENROUTER_FALLBACK_MODELS.length <= 2);
     assert.ok(OPENROUTER_RETRY_FALLBACKS.length <= 2);
+    assert.ok(OPENROUTER_RETRY2_FALLBACKS.length <= 2);
+    assert.ok(OPENROUTER_RETRY3_FALLBACKS.length <= 2);
     for (const ids of routes) {
       assert.ok(ids.length <= 3);
       assert.doesNotThrow(() => assertFreeChatModels(ids));
@@ -129,6 +143,34 @@ describe("OpenRouter config", () => {
     assert.throws(() => assertFreeChatModels(["nvidia/nemotron-3.5-lightning"]), OpenRouterError);
     if (previous === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previous;
+  });
+
+  it("keeps every configured model on the free tier and unique", () => {
+    assert.equal(new Set(OPENROUTER_ALL_MODELS).size, OPENROUTER_ALL_MODELS.length);
+    for (const id of OPENROUTER_ALL_MODELS) {
+      assert.match(id, /:free$/, `${id} must be a free route`);
+    }
+  });
+
+  it("spreads models across distinct providers for rate-limit diversity", () => {
+    const providers = new Set(OPENROUTER_ALL_MODELS.map((id) => id.split("/")[0]));
+    // Twelve models should not all sit behind one or two providers, or a
+    // provider-wide rate limit takes out every fallback at the same time.
+    assert.ok(providers.size >= 6, `expected >= 6 providers, got ${providers.size}`);
+  });
+
+  it("falls through to the next trio on a retired model id", () => {
+    // 404 = OpenRouter retired that model id. The next trio may still work.
+    assert.equal(isRetryable(404), true);
+    // Rate limits and upstream hiccups are retryable.
+    assert.equal(isRetryable(429), true);
+    assert.equal(isRetryable(408), true);
+    assert.equal(isRetryable(503), true);
+    // A bad key or a forbidden key is fatal — no other model will help.
+    assert.equal(isRetryable(401), false);
+    assert.equal(isRetryable(403), false);
+    assert.equal(isRetryable(400), false);
+    assert.equal(isRetryable(500), false);
   });
 });
 

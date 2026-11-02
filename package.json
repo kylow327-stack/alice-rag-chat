@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "ingest": "tsx scripts/ingest.ts",
+    "check:models": "tsx scripts/check-models.ts",
     "test": "tsx --test lib/rag.test.ts"
   },
   "dependencies": {
