@@ -5,10 +5,16 @@ import {
   EMBEDDING_MODEL,
   GUTENBERG_ID,
   LEXICAL_WEIGHT,
+  OPENROUTER_BACKOFF_BASE_MS,
   OPENROUTER_CHAT_URL,
   OPENROUTER_FALLBACK_MODELS,
+  OPENROUTER_MAX_ROUNDS,
   OPENROUTER_MODEL,
   OPENROUTER_REFERER,
+  OPENROUTER_RETRY2_FALLBACKS,
+  OPENROUTER_RETRY2_MODEL,
+  OPENROUTER_RETRY_FALLBACKS,
+  OPENROUTER_RETRY_MODEL,
   OPENROUTER_TITLE,
   SCORE_FLOOR,
   SOURCE_URL,
@@ -81,20 +87,37 @@ export default function ArchitecturePage() {
               <code className="text-navy">POST {OPENROUTER_CHAT_URL}</code> with{" "}
               <code className="text-navy">Authorization: Bearer $OPENROUTER_API_KEY</code>,{" "}
               <code className="text-navy">HTTP-Referer: {OPENROUTER_REFERER}</code>, and{" "}
-              <code className="text-navy">X-Title: {OPENROUTER_TITLE}</code>. The referer is a
-              placeholder until this demo has a public URL. Temperature is 0.2. The reply is
+              <code className="text-navy">X-Title: {OPENROUTER_TITLE}</code>. Temperature is 0.2. The reply is
               the OpenAI-style <code className="text-navy">choices[0].message.content</code>.
               A separate reasoning trace is ignored. If the text itself opens with a
               thinking-process preamble, only the final answer is shown.
             </span>
             <span className="mt-2 block">
               One request tries {OPENROUTER_MODEL}, then{" "}
-              {OPENROUTER_FALLBACK_MODELS.join(" and ")}. If that free trio is rate-limited or
-              returns nothing, the server tries one more free-only trio. Shared-pool 429s are
-              common on these routes; a second try usually gets through. The client refuses
-              any model id that does not end in <code className="text-navy">:free</code>. There
-              is no paid fallback. The only server secret is{" "}
+              {OPENROUTER_FALLBACK_MODELS.join(" and ")}. If that free trio is
+              rate-limited or returns nothing, the server waits{" "}
+              {OPENROUTER_BACKOFF_BASE_MS / 1000}s and tries a second free-only trio
+              ({OPENROUTER_RETRY_MODEL} + {OPENROUTER_RETRY_FALLBACKS.join(", ")}),
+              then a third ({OPENROUTER_RETRY2_MODEL} +{" "}
+              {OPENROUTER_RETRY2_FALLBACKS.join(", ")}), with the backoff doubling
+              each round. The server also respects the{" "}
+              <code className="text-navy">Retry-After</code> header when OpenRouter
+              sends one. Up to {OPENROUTER_MAX_ROUNDS} model trios are tried in total.
+              Shared-pool 429s are common on these routes; the staggered retry with
+              provider diversity usually gets through. The client refuses any model id
+              that does not end in <code className="text-navy">:free</code>. There is
+              no paid fallback. The only server secret is{" "}
               <code className="text-navy">OPENROUTER_API_KEY</code>.
+            </span>
+            <span className="mt-2 block">
+              The client also retries automatically: on a 502{" "}
+              <code className="text-navy">provider_error</code>, it waits and sends
+              the request again (up to 3 retries with 2s/4s/8s backoff), showing a
+              &ldquo;Retrying…&rdquo; indicator instead of an error.
+            </span>
+            <span className="mt-2 block">
+              Identical questions within a 5-minute window are served from an
+              in-memory cache, so repeat questions do not hit OpenRouter at all.
             </span>
           </dd>
         </div>

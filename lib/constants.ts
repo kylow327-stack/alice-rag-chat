@@ -1,7 +1,12 @@
 /**
- * Primary free chat model. Laguna S 2.1 and Gemma 4 31B free routes were
- * hitting the upstream shared pool (429). Nemotron Lightning still answered
- * at max_tokens 700.
+ * Free chat models on OpenRouter, grouped into trios for sequential retry.
+ * Each trio is tried in order; within a trio, OpenRouter's "models" array
+ * lets the platform pick the first available one.
+ *
+ * Provider diversity matters: when the shared free pool is rate-limited,
+ * spreading across different providers (Nvidia, Liquid, Google, Meta, etc.)
+ * gives each trio a better chance of landing on a different rate-limit bucket.
+ *
  * https://openrouter.ai/models?q=free
  */
 export const OPENROUTER_MODEL = "nvidia/nemotron-3.5-lightning:free";
@@ -12,18 +17,35 @@ export const OPENROUTER_FALLBACK_MODELS = [
   "recursive/flint-v1.0:free",
 ] as const;
 
-/** Second free-only trio, used once if the first call is rate-limited or empty. */
-export const OPENROUTER_RETRY_MODEL = "dots-studio/dots-3-note-preview:free";
+/** Second free-only trio, used if the first call is rate-limited or empty. */
+export const OPENROUTER_RETRY_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 export const OPENROUTER_RETRY_FALLBACKS = [
-  "cohere/north-mini-code:free",
   "google/gemma-4-31b-it:free",
+  "dots-studio/dots-3-note-preview:free",
 ] as const;
+
+/** Third free-only trio, used if the first two are both rate-limited. */
+export const OPENROUTER_RETRY2_MODEL = "deepseek/deepseek-r1:free";
+
+export const OPENROUTER_RETRY2_FALLBACKS = [
+  "qwen/qwen3-32b:free",
+  "cohere/north-mini-code:free",
+] as const;
+
+/** Base delay (ms) between model-trio retries. Doubles each round. */
+export const OPENROUTER_BACKOFF_BASE_MS = 2_000;
+
+/** Maximum delay between retries (ms). */
+export const OPENROUTER_BACKOFF_MAX_MS = 16_000;
+
+/** How many model-trio rounds to attempt before giving up. */
+export const OPENROUTER_MAX_ROUNDS = 3;
 
 export const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-/** Placeholder until the demo has a public URL. OpenRouter uses it for rankings. */
-export const OPENROUTER_REFERER = "https://alice-rag.example";
+/** The demo's public URL. OpenRouter uses it for rankings. */
+export const OPENROUTER_REFERER = "https://alice-rag-chat.vercel.app/";
 
 export const OPENROUTER_TITLE = "Alice RAG Chat";
 

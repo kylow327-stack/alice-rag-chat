@@ -17,65 +17,141 @@ const EXAMPLES = [
   "What is the capital of France?",
 ];
 
+// ─── Client-side retry config ───────────────────────────────────────────────
+// When the server returns 502 (provider_error / rate-limited), the client
+// automatically retries up to MAX_RETRIES times with exponential backoff.
+// This gives the server-side backoff + model rotation time to land on a
+// free model that isn't rate-limited.
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 2_000; // 2s, 4s, 8s
+const RETRY_MAX_DELAY_MS = 10_000;
+
+function retryDelay(attempt: number): number {
+  const base = RETRY_BASE_DELAY_MS * (1 << attempt); // 2s, 4s, 8s
+  const jitter = Math.floor(Math.random() * 500);
+  return Math.min(base + jitter, RETRY_MAX_DELAY_MS);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type ChatResponse = {
+  answer?: string;
+  refused?: boolean;
+  citations?: Citation[];
+  error?: string;
+  code?: string;
+};
+
 export function ChatPanel() {
   const [draft, setDraft] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     logRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
-  }, [turns, pending, error]);
+  }, [turns, pending, retrying, error]);
+
+  async function chatFetch(
+    messages: { role: string; content: string }[],
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; data: ChatResponse; status: number }> {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      signal,
+    });
+    const data = (await response.json()) as ChatResponse;
+    return { ok: response.ok, data, status: response.status };
+  }
 
   async function ask(text: string) {
     const question = text.trim();
     if (!question || pending) return;
+
     setError(null);
+    setRetrying(false);
+    setRetryCount(0);
+
     const nextTurns: Turn[] = [...turns, { role: "user", content: question }];
     setTurns(nextTurns);
     setDraft("");
     setPending(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const payload = nextTurns.map((turn) => ({ role: turn.role, content: turn.content }));
+
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: nextTurns.map((turn) => ({ role: turn.role, content: turn.content })),
-        }),
-      });
-      const data = (await response.json()) as {
-        answer?: string;
-        refused?: boolean;
-        citations?: Citation[];
-        error?: string;
-        code?: string;
-      };
-      if (!response.ok) {
+      let lastError: string | null = null;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          setRetrying(true);
+          setRetryCount(attempt);
+          await sleep(retryDelay(attempt - 1));
+        }
+
+        const result = await chatFetch(payload, controller.signal);
+
+        if (controller.signal.aborted) return;
+
+        if (result.ok && typeof result.data.answer === "string") {
+          setTurns([
+            ...nextTurns,
+            {
+              role: "assistant",
+              content: result.data.answer,
+              citations: result.data.citations ?? [],
+              refused: result.data.refused === true,
+            },
+          ]);
+          return;
+        }
+
+        // Non-retryable errors — show immediately, no retry.
+        if (result.data.code === "missing_api_key" || result.data.code === "bad_request") {
+          setError(
+            result.data.code === "missing_api_key"
+              ? "This server has no OpenRouter key, so chat returns 503. Set OPENROUTER_API_KEY (a free key from openrouter.ai/keys) and reload."
+              : (result.data.error ?? "The request failed."),
+          );
+          return;
+        }
+
+        // Retryable error (provider_error / rate-limited / 502)
+        lastError = result.data.error ?? "The model provider returned an error.";
+
+        if (attempt < MAX_RETRIES) {
+          // Keep looping — the retry state is already set.
+          continue;
+        }
+      }
+
+      // All retries exhausted.
+      if (!controller.signal.aborted) {
         setError(
-          data.code === "missing_api_key"
-            ? "This server has no OpenRouter key, so chat returns 503. Set OPENROUTER_API_KEY (a free key from openrouter.ai/keys) and reload."
-            : (data.error ?? "The request failed."),
+          lastError ??
+            "The free model pool is busy after several retries. Please try again in a moment.",
         );
-        return;
       }
-      if (typeof data.answer !== "string") {
-        setError("The server returned an unexpected response.");
-        return;
-      }
-      setTurns([
-        ...nextTurns,
-        {
-          role: "assistant",
-          content: data.answer,
-          citations: data.citations ?? [],
-          refused: data.refused === true,
-        },
-      ]);
     } catch {
-      setError("The network request failed.");
+      if (!controller.signal.aborted) {
+        setError("The network request failed.");
+      }
     } finally {
       setPending(false);
+      setRetrying(false);
+      setRetryCount(0);
+      abortRef.current = null;
     }
   }
 
@@ -90,6 +166,10 @@ export function ChatPanel() {
       void ask(draft);
     }
   }
+
+  const pendingLabel = retrying
+    ? `Retrying… (attempt ${retryCount} of ${MAX_RETRIES})`
+    : "Reading the passage…";
 
   return (
     <section className="mt-8 flex flex-1 flex-col border border-line bg-paper-raised">
@@ -144,7 +224,7 @@ export function ChatPanel() {
             </article>
           ),
         )}
-        {pending ? <p className="text-ink-soft">Reading the passage…</p> : null}
+        {pending ? <p className="text-ink-soft">{pendingLabel}</p> : null}
         {error ? (
           <p role="alert" className="border border-signal bg-signal-soft px-3 py-2 text-ink">
             {error}

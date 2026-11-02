@@ -11,6 +11,51 @@ import type { ChatMessage, ChatSuccess, Hit } from "@/lib/types";
 
 export const maxDuration = 180;
 
+// ─── In-memory response cache ───────────────────────────────────────────────
+// Identical questions within the TTL window return the cached answer instead
+// of hitting OpenRouter again. This reduces rate-limit pressure from repeat
+// questions without persisting anything to disk.
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_MAX = 64; // max entries — LRU-ish (oldest evicted on size overflow)
+
+type CacheEntry = {
+  answer: ChatSuccess;
+  expiresAt: number;
+};
+
+const responseCache = new Map<string, CacheEntry>();
+
+function cacheKey(messages: ChatMessage[]): string {
+  // Only key on the actual message content — role + content of each turn.
+  return messages.map((m) => `${m.role}:${m.content}`).join("|");
+}
+
+function cacheGet(key: string): ChatSuccess | null {
+  const entry = responseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    responseCache.delete(key);
+    return null;
+  }
+  // Move to end (most-recently-used) for simple LRU.
+  responseCache.delete(key);
+  responseCache.set(key, entry);
+  return entry.answer;
+}
+
+function cacheSet(key: string, answer: ChatSuccess): void {
+  if (responseCache.size >= CACHE_MAX) {
+    // Evict oldest entry (first in insertion order).
+    const oldest = responseCache.keys().next();
+    if (!oldest.done) responseCache.delete(oldest.value);
+  }
+  responseCache.set(key, {
+    answer,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+}
+// ─── End cache ──────────────────────────────────────────────────────────────
+
 function json(body: unknown, status: number) {
   return Response.json(body, { status });
 }
@@ -61,14 +106,27 @@ export async function POST(request: Request) {
     );
   }
 
+  // Check cache before running retrieval or calling the model.
+  const key = cacheKey(messages);
+  const cached = cacheGet(key);
+  if (cached) {
+    return json(cached, 200);
+  }
+
   const assessment = assess(retrievalQuery(messages));
   if (assessment.refused) {
     const refused: ChatSuccess = { answer: REFUSAL, refused: true, citations: [] };
+    // Refusals are cheap to compute — cache them too so repeat off-book
+    // questions don't even hit the retrieval step.
+    cacheSet(key, refused);
     return json(refused, 200);
   }
 
   try {
     const completion = await answerFromPassages(messages, assessment.hits);
+    // Cache successful completions (including model refusals) to avoid
+    // re-calling OpenRouter for the same question within the TTL window.
+    cacheSet(key, completion);
     return json(completion, 200);
   } catch (error) {
     const message =
