@@ -92,3 +92,55 @@ export function answerFromPayload(payload: unknown): string {
   }
   return "";
 }
+
+/**
+ * Last-resort recovery when a reasoning model put its whole reply in a
+ * separate `reasoning` field and `content` was left empty.
+ *
+ * The chat UI must never show scratchwork, so this does not return the
+ * reasoning text itself. It only looks for a final-answer marker inside the
+ * reasoning (for example "Final answer: ...") and returns that fragment.
+ * Returns "" when no final answer can be identified, so the caller can fall
+ * through to the next model.
+ */
+export function answerFromReasoning(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const choice = (
+    payload as {
+      choices?: {
+        message?: {
+          content?: unknown;
+          reasoning?: unknown;
+          reasoning_details?: { text?: unknown }[];
+        };
+      }[];
+    }
+  ).choices?.[0];
+  const message = choice?.message;
+  if (!message) return "";
+
+  const reasoning = typeof message.reasoning === "string" ? message.reasoning : "";
+  const details = Array.isArray(message.reasoning_details)
+    ? message.reasoning_details
+        .map((detail) => (typeof detail?.text === "string" ? detail.text : ""))
+        .join("\n")
+    : "";
+  const combined = [reasoning, details].filter(Boolean).join("\n");
+  if (!combined.trim()) return "";
+
+  // Look for an explicit final-answer marker and take what follows it.
+  const markers = [...combined.matchAll(new RegExp(FINAL_MARKER.source, "gi"))];
+  const marked = markers.at(-1);
+  if (marked) {
+    const tail = combined.slice(marked.index + marked[0].length).trim();
+    if (tail) {
+      const cleaned = tail.replace(/<\/?think>/gi, "").replace(/\*\*/g, "").trim();
+      if (cleaned && !looksLikeChainOfThought(cleaned)) return cleaned;
+    }
+  }
+
+  // A refusal sentinel inside the reasoning still means "not in the book".
+  if (/(?:^|\n)\s*NOT_IN_BOOK\b/i.test(combined)) return "NOT_IN_BOOK";
+
+  return "";
+}

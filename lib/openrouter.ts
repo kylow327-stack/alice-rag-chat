@@ -14,7 +14,7 @@ import {
   OPENROUTER_RETRY_MODEL,
   OPENROUTER_TITLE,
 } from "./constants";
-import { answerFromPayload } from "./extract-answer";
+import { answerFromPayload, answerFromReasoning } from "./extract-answer";
 import type { ModelMessage } from "./types";
 
 const OPENROUTER_TIMEOUT_MS = 90_000;
@@ -192,7 +192,19 @@ async function requestRoute(
   } catch {
     throw new OpenRouterError(502, "OpenRouter returned an unreadable response.");
   }
-  return { status: response.status, text: answerFromPayload(payload), retryAfterMs: null };
+
+  // `answerFromPayload` returns "" when the model answered with only
+  // scratchwork (a reasoning preamble with no final reply). Some models put
+  // the whole reply in a separate `reasoning` field, so there is a second
+  // recovery path before giving up on this route.
+  const text = answerFromPayload(payload);
+  if (text) return { status: response.status, text, retryAfterMs: null };
+
+  const recovered = answerFromReasoning(payload);
+  if (recovered) return { status: response.status, text: recovered, retryAfterMs: null };
+
+  console.warn(`OpenRouter route ${route.model} returned no usable answer text.`);
+  return { status: response.status, text: "", retryAfterMs: null };
 }
 
 /**
@@ -214,6 +226,7 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
   let lastStatus = 0;
   let lastModel = "";
   let sawRetired = false;
+  let sawEmptyText = false;
 
   for (let round = 0; round < maxRounds; round++) {
     const route = ALL_ROUTES[round];
@@ -225,6 +238,12 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
     lastModel = route.model;
     if (result.status === 404) sawRetired = true;
 
+    // A 200 with no usable text means the model answered with scratchwork
+    // only. Try the next trio straight away — there is no rate limit to wait
+    // out, and the wait would just add latency.
+    const emptyText = result.status === 200;
+    if (emptyText) sawEmptyText = true;
+
     // Non-retryable error — stop immediately.
     if (!isRetryable(result.status)) {
       throw providerError(result.status, route.model);
@@ -232,6 +251,12 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
 
     // If this isn't the last round, wait before trying the next trio.
     if (round < maxRounds - 1) {
+      if (emptyText) {
+        console.warn(
+          `OpenRouter round ${round + 1} returned no usable text (${route.model}), trying the next trio…`,
+        );
+        continue;
+      }
       const delay = backoffDelay(round, result.retryAfterMs);
       console.warn(
         `OpenRouter round ${round + 1} failed (${result.status}), ` +
@@ -246,6 +271,12 @@ export async function completeChat(messages: ModelMessage[]): Promise<string> {
     throw new OpenRouterError(
       502,
       "OpenRouter no longer serves the configured free models. Run `npm run check:models` and update lib/constants.ts.",
+    );
+  }
+  if (sawEmptyText) {
+    throw new OpenRouterError(
+      502,
+      "The free models answered without a usable reply. Please try again in a moment.",
     );
   }
   if (lastStatus === 429 || lastStatus === 408 || lastStatus === 503) {
