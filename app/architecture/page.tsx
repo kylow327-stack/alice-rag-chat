@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import {
   COSINE_WITHOUT_OVERLAP,
+  DEEPSEEK_CHAT_URL,
+  DEEPSEEK_MODEL,
   EMBEDDING_DIM,
   EMBEDDING_MODEL,
   GROQ_CHAT_URL,
@@ -8,8 +10,6 @@ import {
   GUTENBERG_ID,
   LEXICAL_WEIGHT,
   BACKOFF_BASE_MS,
-  MISTRAL_CHAT_URL,
-  MISTRAL_MODEL,
   OPENROUTER_CHAT_URL,
   OPENROUTER_FALLBACK_MODELS,
   OPENROUTER_MODEL,
@@ -56,7 +56,7 @@ const STEPS = [
   },
   {
     title: "Generate",
-    body: `Otherwise the passages and the question go to a multi-provider LLM cascade. Mistral is tried first (${MISTRAL_MODEL} via ${MISTRAL_CHAT_URL}); if it is rate-limited, Groq is tried next (${GROQ_MODEL} via ${GROQ_CHAT_URL}); if both are busy, OpenRouter's free-tier rotation kicks in as the last resort. All three are OpenAI-compatible. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
+    body: `Otherwise the passages and the question go to a multi-provider LLM cascade. DeepSeek is tried first (${DEEPSEEK_MODEL} via ${DEEPSEEK_CHAT_URL}); if it is unavailable, Groq is tried next (${GROQ_MODEL} via ${GROQ_CHAT_URL}); if both are busy, OpenRouter's free-tier rotation kicks in as the last resort. All three are OpenAI-compatible. The reply is prose. Citations are the retrieved chunks — id, chapter, and a short quote — not spans invented by the model.`,
   },
 ];
 
@@ -68,7 +68,7 @@ export default function ArchitecturePage() {
       <p className="mt-4 text-lg text-ink-soft">
         A small retrieval-augmented chat over one public-domain book. There is no
         account, no file upload, and no hosted embedding API. Generation uses a
-        multi-provider cascade: Mistral (primary) → Groq (secondary) → OpenRouter free tier (fallback).
+        multi-provider cascade: DeepSeek (primary) → Groq (secondary) → OpenRouter free tier (fallback).
       </p>
 
       <ol className="mt-8 flex flex-col gap-4">
@@ -92,10 +92,11 @@ export default function ArchitecturePage() {
             </span>
             <ol className="mt-2 list-decimal pl-5">
               <li>
-                <strong>Mistral</strong> —{" "}
-                <code className="bg-paper px-1.5 py-0.5 text-navy">{MISTRAL_MODEL}</code> via{" "}
-                <code className="text-navy">{MISTRAL_CHAT_URL}</code>. Free tier: ~1 RPS / 500K TPM.
-                Generous enough for a demo; the primary provider.
+                <strong>DeepSeek</strong> —{" "}
+                <code className="bg-paper px-1.5 py-0.5 text-navy">{DEEPSEEK_MODEL}</code> via{" "}
+                <code className="text-navy">{DEEPSEEK_CHAT_URL}</code>. Paid API but extremely
+                cheap ($0.14/M input, $0.28/M output — ~$0.0002 per answer). No rate-limit
+                pressure; the primary provider.
               </li>
               <li>
                 <strong>Groq</strong> —{" "}

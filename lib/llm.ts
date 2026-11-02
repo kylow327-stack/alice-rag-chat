@@ -1,23 +1,24 @@
 /**
  * Multi-provider LLM cascade.
  *
- * Tries providers in order: Mistral → Groq → OpenRouter.
+ * Tries providers in order: DeepSeek → Groq → OpenRouter.
  * All three are OpenAI-compatible (same /chat/completions body shape),
  * so a single request function works for all of them.
  *
  * Provider rotation solves the problem that killed the demo on OpenRouter
  * alone: OpenRouter's free tier is rate-limited at 50 requests/day (shared
- * across all free models). Mistral gives ~1 RPS / 500K TPM, and Groq gives
- * 30 RPM / 1,000 RPD — both far more generous for a portfolio demo.
+ * across all free models). DeepSeek is a paid API but extremely cheap
+ * ($0.14/M input, $0.28/M output — ~$0.0002 per answer), so it never
+ * rate-limits. Groq gives 30 RPM / 1,000 RPD on the free tier as a fallback.
  */
 
 import {
   BACKOFF_BASE_MS,
   BACKOFF_MAX_MS,
+  DEEPSEEK_CHAT_URL,
+  DEEPSEEK_MODEL,
   GROQ_CHAT_URL,
   GROQ_MODEL,
-  MISTRAL_CHAT_URL,
-  MISTRAL_MODEL,
   OPENROUTER_ALL_MODELS,
   OPENROUTER_CHAT_URL,
   OPENROUTER_FALLBACK_MODELS,
@@ -51,11 +52,11 @@ export class LLMError extends Error {
 export const OpenRouterError = LLMError;
 
 export function llmConfigError(): string | null {
-  const mistral = process.env.MISTRAL_API_KEY?.trim() ?? "";
+  const deepseek = process.env.DEEPSEEK_API_KEY?.trim() ?? "";
   const groq = process.env.GROQ_API_KEY?.trim() ?? "";
   const openrouter = process.env.OPENROUTER_API_KEY?.trim() ?? "";
-  if (!mistral && !groq && !openrouter) {
-    return "No LLM API key is configured. Set MISTRAL_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.";
+  if (!deepseek && !groq && !openrouter) {
+    return "No LLM API key is configured. Set DEEPSEEK_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.";
   }
   return null;
 }
@@ -96,18 +97,18 @@ type Provider = {
 function availableProviders(): Provider[] {
   const providers: Provider[] = [];
 
-  // 1. Mistral (primary — most generous free tier)
-  const mistralKey = process.env.MISTRAL_API_KEY?.trim() ?? "";
-  if (mistralKey) {
+  // 1. DeepSeek (primary — extremely cheap paid API, effectively no rate limit)
+  const deepseekKey = process.env.DEEPSEEK_API_KEY?.trim() ?? "";
+  if (deepseekKey) {
     providers.push({
-      name: "Mistral",
-      url: MISTRAL_CHAT_URL,
-      apiKey: mistralKey,
-      model: MISTRAL_MODEL,
+      name: "DeepSeek",
+      url: DEEPSEEK_CHAT_URL,
+      apiKey: deepseekKey,
+      model: DEEPSEEK_MODEL,
     });
   }
 
-  // 2. Groq (secondary — fast LPU inference, 30 RPM / 1000 RPD)
+  // 2. Groq (secondary — fast LPU inference, 30 RPM / 1000 RPD free tier)
   const groqKey = process.env.GROQ_API_KEY?.trim() ?? "";
   if (groqKey) {
     providers.push({

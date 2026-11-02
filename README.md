@@ -10,7 +10,7 @@ There is no upload and no sign-in. Chat is a separate Next.js app, meant to be d
 
 - Next.js App Router, TypeScript, Tailwind
 - Retrieval: a committed local index (no embedding API)
-- Generation: multi-provider cascade — [Mistral AI](https://console.mistral.ai) (primary, ~1 RPS / 500K TPM free tier) → [Groq](https://groq.com) (secondary, 30 RPM / 1,000 RPD) → [OpenRouter](https://openrouter.ai) free models (fallback, 4-trio rotation). All OpenAI-compatible.
+- Generation: multi-provider cascade — [DeepSeek](https://platform.deepseek.com) (primary, extremely cheap paid API — ~$0.0002 per answer) → [Groq](https://groq.com) (secondary, 30 RPM / 1,000 RPD free tier) → [OpenRouter](https://openrouter.ai) free models (fallback, 4-trio rotation). All OpenAI-compatible.
 
 ## Setup
 
@@ -35,27 +35,27 @@ cp .env.example .env.local
 ```
 
 ```
-# Primary provider (free tier ~1 RPS / 500K TPM)
-MISTRAL_API_KEY=
+# Primary provider (paid, ~$0.14/M input, $0.28/M output — ~$0.0002 per answer)
+DEEPSEEK_API_KEY=
 
-# Secondary provider (30 RPM / 1,000 RPD)
+# Secondary provider (free tier, 30 RPM / 1,000 RPD)
 GROQ_API_KEY=
 
 # Fallback provider (free tier, 4-trio rotation)
 OPENROUTER_API_KEY=
 ```
 
-Create free keys at:
-- [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) — Mistral (primary)
+Create keys at:
+- [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) — DeepSeek (primary)
 - [console.groq.com/keys](https://console.groq.com/keys) — Groq (secondary)
 - [openrouter.ai/keys](https://openrouter.ai/keys) — OpenRouter (fallback)
 
-The app tries providers in order: Mistral → Groq → OpenRouter. At least one key must be set. If Mistral is rate-limited, Groq is tried next; if Groq is also rate-limited, OpenRouter's 4-trio rotation kicks in as the last resort.
+The app tries providers in order: DeepSeek → Groq → OpenRouter. At least one key must be set. DeepSeek is a paid API but extremely cheap — a typical RAG answer (~700 tokens) costs about $0.0002, so $5 of credit covers thousands of questions. If DeepSeek is unavailable, Groq is tried next; if Groq is also rate-limited, OpenRouter's 4-trio rotation kicks in as the last resort.
 
 Without any key, `POST /api/chat` returns **503**:
 
 ```json
-{ "error": "No LLM API key is configured. Set MISTRAL_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.", "code": "missing_api_key" }
+{ "error": "No LLM API key is configured. Set DEEPSEEK_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.", "code": "missing_api_key" }
 ```
 
 ### Vercel
@@ -63,7 +63,7 @@ Without any key, `POST /api/chat` returns **503**:
 Create a new project for this repo (its own app, not a subpath of another site).
 
 1. Framework preset: Next.js. Build command: `npm run build`.
-2. Environment variables: Set `MISTRAL_API_KEY`, `GROQ_API_KEY`, and/or `OPENROUTER_API_KEY` for Production and Preview. At least one is required.
+2. Environment variables: Set `DEEPSEEK_API_KEY`, `GROQ_API_KEY`, and/or `OPENROUTER_API_KEY` for Production and Preview. At least one is required.
 3. Redeploy after saving them.
 
 Do not commit `.env.local`.

@@ -15,7 +15,7 @@
  * No API key needed — the catalog endpoint is public.
  */
 
-import { MISTRAL_MODEL, GROQ_MODEL, OPENROUTER_ALL_MODELS } from "../lib/constants";
+import { DEEPSEEK_MODEL, GROQ_MODEL, OPENROUTER_ALL_MODELS } from "../lib/constants";
 
 const CATALOG_URL = "https://openrouter.ai/api/v1/models";
 
@@ -41,8 +41,8 @@ async function fetchCatalog(): Promise<CatalogEntry[]> {
 }
 
 function main(): void {
-  console.log("Provider cascade: Mistral (primary) → Groq (secondary) → OpenRouter (fallback)\n");
-  console.log(`  Mistral model:  ${MISTRAL_MODEL}`);
+  console.log("Provider cascade: DeepSeek (primary) → Groq (secondary) → OpenRouter (fallback)\n");
+  console.log(`  DeepSeek model: ${DEEPSEEK_MODEL}`);
   console.log(`  Groq model:     ${GROQ_MODEL}`);
   console.log(`  OpenRouter:     ${OPENROUTER_ALL_MODELS.length} free models in 4 trios\n`);
 

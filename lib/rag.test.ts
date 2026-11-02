@@ -7,10 +7,10 @@ import { isModelRefusal, retrievalQuery } from "./prompt";
 import { answerFromPayload, extractFinalAnswer } from "./extract-answer";
 import { assess, loadCorpus, search } from "./retrieve";
 import {
+  DEEPSEEK_CHAT_URL,
+  DEEPSEEK_MODEL,
   GROQ_CHAT_URL,
   GROQ_MODEL,
-  MISTRAL_CHAT_URL,
-  MISTRAL_MODEL,
   OPENROUTER_ALL_MODELS,
   OPENROUTER_FALLBACK_MODELS,
   OPENROUTER_MODEL,
@@ -118,29 +118,29 @@ describe("retrieval", () => {
 
 describe("LLM provider config", () => {
   it("requires at least one provider key", () => {
-    const prevM = process.env.MISTRAL_API_KEY;
+    const prevD = process.env.DEEPSEEK_API_KEY;
     const prevG = process.env.GROQ_API_KEY;
     const prevO = process.env.OPENROUTER_API_KEY;
-    delete process.env.MISTRAL_API_KEY;
+    delete process.env.DEEPSEEK_API_KEY;
     delete process.env.GROQ_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     assert.ok(llmConfigError());
-    process.env.MISTRAL_API_KEY = "  ";
+    process.env.DEEPSEEK_API_KEY = "  ";
     assert.ok(llmConfigError());
-    process.env.MISTRAL_API_KEY = "test-key";
+    process.env.DEEPSEEK_API_KEY = "test-key";
     assert.equal(llmConfigError(), null);
     // Restore
-    if (prevM === undefined) delete process.env.MISTRAL_API_KEY;
-    else process.env.MISTRAL_API_KEY = prevM;
+    if (prevD === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = prevD;
     if (prevG === undefined) delete process.env.GROQ_API_KEY;
     else process.env.GROQ_API_KEY = prevG;
     if (prevO === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = prevO;
   });
 
-  it("configures Mistral as primary provider", () => {
-    assert.match(MISTRAL_CHAT_URL, /api\.mistral\.ai/);
-    assert.equal(MISTRAL_MODEL, "mistral-small-latest");
+  it("configures DeepSeek as primary provider", () => {
+    assert.match(DEEPSEEK_CHAT_URL, /api\.deepseek\.com/);
+    assert.equal(DEEPSEEK_MODEL, "deepseek-flash");
   });
 
   it("configures Groq as secondary provider", () => {

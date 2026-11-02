@@ -1,5 +1,5 @@
 // ─── Provider cascade ──────────────────────────────────────────────────────
-// The app tries providers in order: Mistral → Groq → OpenRouter.
+// The app tries providers in order: DeepSeek → Groq → OpenRouter.
 // Each provider is OpenAI-compatible (same /chat/completions body shape),
 // so a single request function works for all three.
 //
@@ -8,13 +8,16 @@
 //   shared across all free models). For a portfolio demo that needs to "just
 //   work" when someone clicks, that is not reliable enough.
 //
-//   Mistral's free tier gives ~1 RPS / 500K TPM — plenty for a demo.
-//   Groq gives 30 RPM / 1,000 RPD — fast LPU inference, good fallback.
+//   DeepSeek is a paid API but extremely cheap ($0.14/M input, $0.28/M output).
+//   A ~700-token answer costs ~$0.0002 — practically free for a demo.
+//   Groq gives 30 RPM / 1,000 RPD on the free tier — good free fallback.
 //   OpenRouter stays as the last resort with its 4-trio rotation.
 
-// ─── Mistral (primary) ─────────────────────────────────────────────────────
-export const MISTRAL_CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
-export const MISTRAL_MODEL = "mistral-small-latest";
+// ─── DeepSeek (primary) ────────────────────────────────────────────────────
+// OpenAI-compatible endpoint. Model "deepseek-flash" maps to the latest
+// V4.1-Flash, which is fast, cheap, and high-quality for RAG answering.
+export const DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions";
+export const DEEPSEEK_MODEL = "deepseek-flash";
 
 // ─── Groq (secondary) ──────────────────────────────────────────────────────
 export const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
