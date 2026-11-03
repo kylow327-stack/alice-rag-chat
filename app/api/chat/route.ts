@@ -60,10 +60,14 @@ function json(body: unknown, status: number) {
   return Response.json(body, { status });
 }
 
+// Maximum messages the server will process. Excess turns are truncated
+// from the front (oldest dropped) so the latest question is always included.
+const MAX_MESSAGES = 8;
+
 function parseMessages(body: unknown): ChatMessage[] | null {
   if (!body || typeof body !== "object" || !("messages" in body)) return null;
   const messages = (body as { messages?: unknown }).messages;
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 8) {
+  if (!Array.isArray(messages) || messages.length === 0) {
     return null;
   }
   const parsed: ChatMessage[] = [];
@@ -78,8 +82,11 @@ function parseMessages(body: unknown): ChatMessage[] | null {
     if (!trimmed || trimmed.length > 2000) return null;
     parsed.push({ role, content: trimmed });
   }
-  if (parsed.at(-1)?.role !== "user") return null;
-  return parsed;
+  // Keep only the last MAX_MESSAGES turns. This lets long conversations
+  // continue working without a 400 error.
+  const trimmed = parsed.slice(-MAX_MESSAGES);
+  if (trimmed.at(-1)?.role !== "user") return null;
+  return trimmed;
 }
 
 export async function POST(request: Request) {
@@ -99,7 +106,8 @@ export async function POST(request: Request) {
   if (!messages) {
     return json(
       {
-        error: "Send 1–8 messages. The last one must be a user question under 2000 characters.",
+        error:
+          "Send at least one message. The last one must be a user question under 2000 characters.",
         code: "bad_request",
       },
       400,

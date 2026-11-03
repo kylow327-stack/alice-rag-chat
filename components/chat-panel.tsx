@@ -26,6 +26,11 @@ const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 2_000; // 2s, 4s, 8s
 const RETRY_MAX_DELAY_MS = 10_000;
 
+// Maximum number of messages to send to the server. The server also caps
+// at MAX_MESSAGES, but we trim client-side so the count is predictable and
+// the cache key stays stable as the conversation grows.
+const MAX_MESSAGES = 8;
+
 function retryDelay(attempt: number): number {
   const base = RETRY_BASE_DELAY_MS * (1 << attempt); // 2s, 4s, 8s
   const jitter = Math.floor(Math.random() * 500);
@@ -88,7 +93,12 @@ export function ChatPanel() {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const payload = nextTurns.map((turn) => ({ role: turn.role, content: turn.content }));
+    // Trim to the last MAX_MESSAGES turns so the conversation can grow
+    // indefinitely without hitting the server's message limit.
+    const payload = nextTurns.slice(-MAX_MESSAGES).map((turn) => ({
+      role: turn.role,
+      content: turn.content,
+    }));
 
     try {
       let lastError: string | null = null;
@@ -121,7 +131,7 @@ export function ChatPanel() {
         if (result.data.code === "missing_api_key" || result.data.code === "bad_request") {
           setError(
             result.data.code === "missing_api_key"
-              ? "This server has no OpenRouter key, so chat returns 503. Set OPENROUTER_API_KEY (a free key from openrouter.ai/keys) and reload."
+              ? "This server has no LLM provider key configured. Set DEEPSEEK_API_KEY (or GROQ_API_KEY / OPENROUTER_API_KEY) and redeploy."
               : (result.data.error ?? "The request failed."),
           );
           return;
@@ -203,9 +213,14 @@ export function ChatPanel() {
           ) : (
             <article key={`${turn.role}-${index}`} className="mr-8">
               {turn.refused ? (
-                <p className="text-xs font-semibold uppercase tracking-wide text-signal">
-                  Not in the book
-                </p>
+                <div className="mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-signal">
+                    Not in the book
+                  </p>
+                  <p className="text-xs text-ink-soft">
+                    This demo only answers from Alice's Adventures in Wonderland. Try rephrasing or asking about a character or event from the story.
+                  </p>
+                </div>
               ) : null}
               <p className="whitespace-pre-wrap text-ink">{turn.content}</p>
               {turn.citations && turn.citations.length > 0 ? (
@@ -225,12 +240,15 @@ export function ChatPanel() {
           ),
         )}
         {pending ? <p className="text-ink-soft">{pendingLabel}</p> : null}
-        {error ? (
-          <p role="alert" className="border border-signal bg-signal-soft px-3 py-2 text-ink">
-            {error}
-          </p>
-        ) : null}
       </div>
+      {error ? (
+        <div role="alert" className="mx-4 mb-2 border-l-4 border-signal bg-signal-soft px-4 py-3 sm:mx-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-signal">
+            Error
+          </p>
+          <p className="mt-1 text-sm text-ink">{error}</p>
+        </div>
+      ) : null}
       <form onSubmit={onSubmit} className="border-t border-line p-4 sm:p-5">
         <label htmlFor="question" className="text-sm font-semibold text-navy">
           Ask about the book
