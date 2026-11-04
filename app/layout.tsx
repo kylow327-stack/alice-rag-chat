@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Source_Sans_3, Source_Serif_4 } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
+import { VisitCounter } from "@/components/visit-counter";
 import "./globals.css";
 
 const sans = Source_Sans_3({
@@ -36,9 +37,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {children}
         </main>
         <footer className="border-t border-line px-4 py-6 text-center text-sm text-ink-soft">
-          Text from Project Gutenberg eBook #11,{" "}
-          <cite>Alice’s Adventures in Wonderland</cite> by Lewis Carroll. The
-          narrative is public domain.
+          <p>
+            Text from Project Gutenberg eBook #11,{" "}
+            <cite>Alice's Adventures in Wonderland</cite> by Lewis Carroll. The
+            narrative is public domain.
+          </p>
+          <p className="mt-1">
+            <VisitCounter />
+          </p>
         </footer>
       </body>
     </html>
