@@ -1,13 +1,17 @@
 import { Redis } from "@upstash/redis";
 
+// Prevent Next.js from trying to prerender this route at build time.
+// It needs runtime env vars that aren't available during static generation.
+export const dynamic = "force-dynamic";
+
 // Lazy-init so the route doesn't crash when env vars aren't set yet
 // (e.g. during local dev or before the Upstash integration is linked).
 let redis: Redis | null = null;
 
 function getRedis(): Redis | null {
   if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
   if (!url || !token) return null;
   redis = new Redis({ url, token });
   return redis;
