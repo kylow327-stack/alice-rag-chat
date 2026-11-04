@@ -41,7 +41,7 @@ export function VisitCounter() {
   }
 
   if (count === null) {
-    // Upstash not configured — render nothing so the footer stays clean.
+    // Counter service unreachable — render nothing so the footer stays clean.
     return null;
   }
 
