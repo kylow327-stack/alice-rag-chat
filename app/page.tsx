@@ -7,6 +7,9 @@ export default function HomePage() {
         Project Gutenberg #11
       </p>
       <h1 className="mt-2 font-serif text-4xl text-navy sm:text-5xl">Ask the book.</h1>
+      <p className="mt-2 text-sm text-ink-soft">
+        Built by Rick Low, 2026
+      </p>
       <p className="mt-4 max-w-2xl text-lg text-ink-soft">
         Questions are answered from the public-domain text of{" "}
         <cite>Alice’s Adventures in Wonderland</cite>. An answer cites the
